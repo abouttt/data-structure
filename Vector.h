@@ -131,7 +131,7 @@ public:
 	{
 		if (first > last || last > _size)
 		{
-			throw std::out_of_range("invalid vector subscript");
+			throw std::out_of_range("Invalid Vector subscript");
 		}
 
 		if (first == last)
@@ -168,7 +168,7 @@ public: // Element access
 	{
 		if (pos >= _size)
 		{
-			throw std::out_of_range("invalid vector subscript");
+			throw std::out_of_range("Invalid Vector subscript");
 		}
 
 		return _data[pos];
@@ -178,7 +178,7 @@ public: // Element access
 	{
 		if (pos >= _size)
 		{
-			throw std::out_of_range("invalid vector subscript");
+			throw std::out_of_range("Invalid Vector subscript");
 		}
 
 		return _data[pos];
@@ -276,7 +276,7 @@ public: // Modifiers
 	{
 		if (pos > _size)
 		{
-			throw std::out_of_range("invalid vector subscript");
+			throw std::out_of_range("Invalid Vector subscript");
 		}
 
 		if (_size == _capacity)
@@ -308,7 +308,7 @@ public: // Modifiers
 	{
 		if (pos > _size)
 		{
-			throw std::out_of_range("invalid vector subscript");
+			throw std::out_of_range("Invalid Vector subscript");
 		}
 
 		if (count == 0)
@@ -336,7 +336,7 @@ public: // Modifiers
 	{
 		if (pos > _size)
 		{
-			throw std::out_of_range("invalid vector subscript");
+			throw std::out_of_range("Invalid Vector subscript");
 		}
 
 		size_t count = ilist.size();
@@ -366,7 +366,7 @@ public: // Modifiers
 	{
 		if (pos > _size)
 		{
-			throw std::out_of_range("invalid vector subscript");
+			throw std::out_of_range("Invalid Vector subscript");
 		}
 
 		if (_size == _capacity)
@@ -396,7 +396,7 @@ public: // Modifiers
 	{
 		if (pos >= _size)
 		{
-			throw std::out_of_range("invalid vector subscript");
+			throw std::out_of_range("Invalid Vector subscript");
 		}
 
 		std::move(_data + pos + 1, _data + _size, _data + pos);
@@ -407,7 +407,7 @@ public: // Modifiers
 	{
 		if (first > last || last > _size)
 		{
-			throw std::out_of_range("invalid vector subscript");
+			throw std::out_of_range("Invalid Vector subscript");
 		}
 
 		if (first == last)
