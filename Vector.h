@@ -127,6 +127,21 @@ public:
 		}
 	}
 
+	void assign(size_t first, size_t last, const T& value)
+	{
+		if (first > last || last > _size)
+		{
+			throw std::out_of_range("invalid vector subscript");
+		}
+
+		if (first == last)
+		{
+			return;
+		}
+
+		std::fill_n(_data + first, last - first, value);
+	}
+
 	void assign(std::initializer_list<T> ilist)
 	{
 		clear();
