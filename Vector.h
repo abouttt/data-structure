@@ -10,576 +10,544 @@
 
 namespace abouttt
 {
-	template<typename T, typename Allocator = std::allocator<T>>
-	class Vector
+
+template<typename T, typename Allocator = std::allocator<T>>
+class Vector
+{
+private:
+	using AllocTraits = std::allocator_traits<Allocator>;
+
+public:
+	Vector(const Allocator& alloc = Allocator())
+		: _data(nullptr)
+		, _size(0)
+		, _capacity(0)
+		, _allocator(alloc)
 	{
-	private:
-		using AllocTraits = std::allocator_traits<Allocator>;
+	}
 
-	public:
-		Vector(const Allocator& alloc = Allocator())
-			: _data(nullptr)
-			, _size(0)
-			, _capacity(0)
-			, _allocator(alloc)
+	Vector(size_t count, const T& value = T(), const Allocator& alloc = Allocator())
+		: _size(count)
+		, _capacity(count)
+		, _allocator(alloc)
+	{
+		_data = AllocTraits::allocate(_allocator, count);
+		std::uninitialized_fill_n(_data, count, value);
+	}
+
+	Vector(std::initializer_list<T> init, const Allocator& alloc = Allocator())
+		: _size(init.size())
+		, _capacity(init.size())
+		, _allocator(alloc)
+	{
+		_data = AllocTraits::allocate(_allocator, init.size());
+		std::uninitialized_copy(init.begin(), init.end(), _data);
+	}
+
+	Vector(const Vector& other)
+		: _size(other._size)
+		, _capacity(other._size)
+		, _allocator(AllocTraits::select_on_container_copy_construction(other._allocator))
+	{
+		_data = AllocTraits::allocate(_allocator, _capacity);
+		std::uninitialized_copy(other._data, other._data + other._size, _data);
+	}
+
+	Vector(Vector&& other)
+		: _data(other._data)
+		, _size(other._size)
+		, _capacity(other._capacity)
+		, _allocator(std::move(other._allocator))
+	{
+		other._data = nullptr;
+		other._size = 0;
+		other._capacity = 0;
+	}
+
+	~Vector()
+	{
+		destroy_elements();
+		AllocTraits::deallocate(_allocator, _data, _capacity);
+	}
+
+public:
+	Vector& operator=(const Vector& other)
+	{
+		if (this != &other)
 		{
+			Vector temp(other);
+			swap(temp);
 		}
 
-		Vector(size_t count, const T& value = T(), const Allocator& alloc = Allocator())
-			: _size(count)
-			, _capacity(count)
-			, _allocator(alloc)
+		return *this;
+	}
+
+	Vector& operator=(Vector&& other)
+	{
+		if (this != &other)
 		{
-			_data = AllocTraits::allocate(_allocator, count);
-			for (size_t i = 0; i < count; ++i)
+			destroy_elements();
+			AllocTraits::deallocate(_allocator, _data, _capacity);
+
+			_data = other._data;
+			_size = other._size;
+			_capacity = other._capacity;
+			if constexpr (AllocTraits::propagate_on_container_move_assignment::value)
 			{
-				AllocTraits::construct(_allocator, _data + i, value);
+				_allocator = std::move(other._allocator);
 			}
-		}
 
-		Vector(std::initializer_list<T> init, const Allocator& alloc = Allocator())
-			: _size(init.size())
-			, _capacity(init.size())
-			, _allocator(alloc)
-		{
-			_data = AllocTraits::allocate(_allocator, init.size());
-			size_t i = 0;
-			for (const auto& item : init)
-			{
-				AllocTraits::construct(_allocator, _data + i++, item);
-			}
-		}
-
-		Vector(const Vector& other)
-			: _size(other._size)
-			, _capacity(other._capacity)
-			, _allocator(AllocTraits::select_on_container_copy_construction(other._allocator))
-		{
-			_data = AllocTraits::allocate(_allocator, other._capacity);
-			for (size_t i = 0; i < _size; ++i)
-			{
-				AllocTraits::construct(_allocator, _data + i, other._data[i]);
-			}
-		}
-
-		Vector(Vector&& other)
-			: _data(other._data)
-			, _size(other._size)
-			, _capacity(other._capacity)
-			, _allocator(std::move(other._allocator))
-		{
 			other._data = nullptr;
 			other._size = 0;
 			other._capacity = 0;
 		}
 
-		~Vector()
+		return *this;
+	}
+
+	Vector& operator=(std::initializer_list<T> ilist)
+	{
+		assign(ilist);
+		return *this;
+	}
+
+	void assign(size_t count, const T& value)
+	{
+		clear();
+
+		if (count > _capacity)
 		{
-			clear();
-			AllocTraits::deallocate(_allocator, _data, _capacity);
+			Vector temp(count, value, _allocator);
+			swap(temp);
+		}
+		else
+		{
+			std::uninitialized_fill_n(_data, count, value);
+			_size = count;
+		}
+	}
+
+	void assign(std::initializer_list<T> ilist)
+	{
+		clear();
+
+		if (ilist.size() > _capacity)
+		{
+			Vector temp(ilist, _allocator);
+			swap(temp);
+		}
+		else
+		{
+			std::uninitialized_copy(ilist.begin(), ilist.end(), _data);
+			_size = ilist.size();
+		}
+	}
+
+	Allocator get_allocator() const
+	{
+		return _allocator;
+	}
+
+public: // Element access
+	T& at(size_t pos)
+	{
+		if (pos >= _size)
+		{
+			throw std::out_of_range("invalid vector subscript");
 		}
 
-	public:
-		Vector& operator=(const Vector& other)
-		{
-			if (this != &other)
-			{
-				Vector temp(other);
-				swap(temp);
-			}
+		return _data[pos];
+	}
 
-			return *this;
+	const T& at(size_t pos) const
+	{
+		if (pos >= _size)
+		{
+			throw std::out_of_range("invalid vector subscript");
 		}
 
-		Vector& operator=(Vector&& other)
+		return _data[pos];
+	}
+
+	T& operator[](size_t pos)
+	{
+		return _data[pos];
+	}
+
+	const T& operator[](size_t pos) const
+	{
+		return _data[pos];
+	}
+
+	T& front()
+	{
+		assert(!empty() && "front() called on empty Vector");
+		return _data[0];
+	}
+
+	const T& front() const
+	{
+		assert(!empty() && "front() called on empty Vector");
+		return _data[0];
+	}
+
+	T& back()
+	{
+		assert(!empty() && "back() called on empty Vector");
+		return _data[_size - 1];
+	}
+
+	const T& back() const
+	{
+		assert(!empty() && "back() called on empty Vector");
+		return _data[_size - 1];
+	}
+
+	T* data()
+	{
+		return _data;
+	}
+
+	const T* data() const
+	{
+		return _data;
+	}
+
+public: // Capacity
+	bool empty() const
+	{
+		return _size == 0;
+	}
+
+	size_t size() const
+	{
+		return _size;
+	}
+
+	size_t max_size() const
+	{
+		return AllocTraits::max_size(_allocator);
+	}
+
+	void reserve(size_t new_cap)
+	{
+		if (new_cap > _capacity)
 		{
-			if (this != &other)
-			{
-				clear();
-				AllocTraits::deallocate(_allocator, _data, _capacity);
+			reallocate(new_cap);
+		}
+	}
 
-				_data = other._data;
-				_size = other._size;
-				_capacity = other._capacity;
-				_allocator = std::move(other._allocator);
+	size_t capacity() const
+	{
+		return _capacity;
+	}
 
-				other._data = nullptr;
-				other._size = 0;
-				other._capacity = 0;
-			}
+	void shrink_to_fit()
+	{
+		if (_size < _capacity)
+		{
+			reallocate(_size);
+		}
+	}
 
-			return *this;
+public: // Modifiers
+	void clear()
+	{
+		destroy_elements();
+		_size = 0;
+	}
+
+	void insert(size_t pos, const T& value)
+	{
+		if (pos > _size)
+		{
+			throw std::out_of_range("invalid vector subscript");
 		}
 
-		Vector& operator=(std::initializer_list<T> ilist)
+		if (_size == _capacity)
 		{
-			assign(ilist);
-			return *this;
+			size_t new_cap = (_capacity == 0) ? 1 : _capacity * 2;
+			reserve(new_cap);
 		}
 
-		void assign(size_t count, const T& value)
+		if (pos < _size)
 		{
-			clear();
-			reserve(count);
-
-			for (size_t i = 0; i < count; ++i)
-			{
-				emplace_back(value);
-			}
+			AllocTraits::construct(_allocator, _data + _size, std::move_if_noexcept(_data[_size - 1]));
+			std::move_backward(_data + pos, _data + _size, _data + _size + 1);
+			_data[pos] = value;
 		}
-
-		void assign(std::initializer_list<T> ilist)
+		else
 		{
-			clear();
-			reserve(ilist.size());
-
-			for (const auto& item : ilist)
-			{
-				emplace_back(item);
-			}
-		}
-
-		Allocator get_allocator() const
-		{
-			return _allocator;
-		}
-
-	public: // Element access
-		T& at(size_t pos)
-		{
-			if (pos >= _size)
-			{
-				throw std::out_of_range("invalid vector subscript");
-			}
-
-			return _data[pos];
-		}
-
-		const T& at(size_t pos) const
-		{
-			if (pos >= _size)
-			{
-				throw std::out_of_range("invalid vector subscript");
-			}
-
-			return _data[pos];
-		}
-
-		T& operator[](size_t pos)
-		{
-			return _data[pos];
-		}
-
-		const T& operator[](size_t pos) const
-		{
-			return _data[pos];
-		}
-
-		T& front()
-		{
-			assert(!empty() && "front() called on empty Vector");
-			return _data[0];
-		}
-
-		const T& front() const
-		{
-			assert(!empty() && "front() called on empty Vector");
-			return _data[0];
-		}
-
-		T& back()
-		{
-			assert(!empty() && "back() called on empty Vector");
-			return _data[_size - 1];
-		}
-
-		const T& back() const
-		{
-			assert(!empty() && "back() called on empty Vector");
-			return _data[_size - 1];
-		}
-
-		T* data()
-		{
-			return _data;
-		}
-
-		const T* data() const
-		{
-			return _data;
-		}
-
-	public: // Capacity
-		bool empty() const
-		{
-			return _size == 0;
-		}
-
-		size_t size() const
-		{
-			return _size;
-		}
-
-		size_t max_size() const
-		{
-			return AllocTraits::max_size(_allocator);
-		}
-
-		void reserve(size_t new_cap)
-		{
-			if (new_cap <= _capacity)
-			{
-				return;
-			}
-
-			T* new_data = AllocTraits::allocate(_allocator, new_cap);
-
-			for (size_t i = 0; i < _size; ++i)
-			{
-				AllocTraits::construct(_allocator, new_data + i, std::move(_data[i]));
-				AllocTraits::destroy(_allocator, _data + i);
-			}
-
-			AllocTraits::deallocate(_allocator, _data, _capacity);
-			_data = new_data;
-			_capacity = new_cap;
-		}
-
-		size_t capacity() const
-		{
-			return _capacity;
-		}
-
-		void shrink_to_fit()
-		{
-			if (_size == _capacity)
-			{
-				return;
-			}
-
-			if (_size == 0)
-			{
-				AllocTraits::deallocate(_allocator, _data, _capacity);
-				_data = nullptr;
-				_capacity = 0;
-				return;
-			}
-
-			T* new_data = AllocTraits::allocate(_allocator, _size);
-
-			for (size_t i = 0; i < _size; ++i)
-			{
-				AllocTraits::construct(_allocator, new_data + i, std::move(_data[i]));
-				AllocTraits::destroy(_allocator, _data + i);
-			}
-
-			AllocTraits::deallocate(_allocator, _data, _capacity);
-			_data = new_data;
-			_capacity = _size;
-		}
-
-	public: // Modifiers
-		void clear()
-		{
-			for (size_t i = 0; i < _size; ++i)
-			{
-				AllocTraits::destroy(_allocator, _data + i);
-			}
-
-			_size = 0;
-		}
-
-		void insert(size_t pos, const T& value)
-		{
-			if (pos > _size)
-			{
-				throw std::out_of_range("invalid vector subscript");
-			}
-
-			check_capacity();
-
-			for (size_t i = _size; i-- > pos;)
-			{
-				T temp = std::move(_data[i]);
-				AllocTraits::destroy(_allocator, _data + i);
-				AllocTraits::construct(_allocator, _data + i + 1, std::move(temp));
-			}
-
 			AllocTraits::construct(_allocator, _data + pos, value);
-			++_size;
 		}
 
-		void insert(size_t pos, T&& value)
+		++_size;
+	}
+
+	void insert(size_t pos, T&& value)
+	{
+		emplace(pos, std::move(value));
+	}
+
+	void insert(size_t pos, size_t count, const T& value)
+	{
+		if (pos > _size)
 		{
-			if (pos > _size)
-			{
-				throw std::out_of_range("invalid vector subscript");
-			}
-
-			check_capacity();
-
-			for (size_t i = _size; i-- > pos;)
-			{
-				T temp = std::move(_data[i]);
-				AllocTraits::destroy(_allocator, _data + i);
-				AllocTraits::construct(_allocator, _data + i + 1, std::move(temp));
-			}
-
-			AllocTraits::construct(_allocator, _data + pos, std::move(value));
-			++_size;
+			throw std::out_of_range("invalid vector subscript");
 		}
 
-		void insert(size_t pos, size_t count, const T& value)
+		if (count == 0)
 		{
-			if (pos > _size)
-			{
-				throw std::out_of_range("invalid vector subscript");
-			}
-
-			if (count == 0)
-			{
-				return;
-			}
-
-			check_capacity(count);
-
-			for (size_t i = _size + count; i-- > pos + count;)
-			{
-				AllocTraits::construct(_allocator, _data + i, std::move(_data[i - count]));
-				AllocTraits::destroy(_allocator, _data + i - count);
-			}
-
-			for (size_t i = pos; i < pos + count; ++i)
-			{
-				AllocTraits::construct(_allocator, _data + i, value);
-			}
-
-			_size += count;
+			return;
 		}
 
-		void insert(size_t pos, std::initializer_list<T> ilist)
+		if (_size + count > _capacity)
 		{
-			if (pos > _size)
-			{
-				throw std::out_of_range("invalid vector subscript");
-			}
-
-			size_t count = ilist.size();
-			check_capacity(count);
-
-			for (size_t i = _size + count; i-- > pos + count;)
-			{
-				T temp = std::move(_data[i - count]);
-				AllocTraits::destroy(_allocator, _data + i - count);
-				AllocTraits::construct(_allocator, _data + i, std::move(temp));
-			}
-
-			size_t i = pos;
-			for (const auto& item : ilist)
-			{
-				AllocTraits::construct(_allocator, _data + i++, item);
-			}
-
-			_size += count;
+			size_t new_cap = std::max(_capacity * 2, _size + count);
+			reserve(new_cap);
 		}
 
-		template<typename... Args>
-		T& emplace(size_t pos, Args&&... args)
+		size_t elems_to_move = _size - pos;
+		if (elems_to_move > 0)
 		{
-			if (pos > _size)
-			{
-				throw std::out_of_range("invalid vector subscript");
-			}
-
-			check_capacity();
-
-			for (size_t i = _size; i > pos; --i)
-			{
-				AllocTraits::construct(_allocator, _data + i, std::move(_data[i - 1]));
-				AllocTraits::destroy(_allocator, _data + i - 1);
-			}
-
-			AllocTraits::construct(_allocator, _data + pos, std::forward<Args>(args)...);
-			++_size;
-			return _data[pos];
+			std::uninitialized_move(_data + _size - elems_to_move, _data + _size, _data + _size + count - elems_to_move);
 		}
 
-		void erase(size_t pos)
-		{
-			if (pos >= _size)
-			{
-				throw std::out_of_range("invalid vector subscript");
-			}
+		std::fill_n(_data + pos, count, value);
+		_size += count;
+	}
 
+	void insert(size_t pos, std::initializer_list<T> ilist)
+	{
+		if (pos > _size)
+		{
+			throw std::out_of_range("invalid vector subscript");
+		}
+
+		size_t count = ilist.size();
+		if (count == 0)
+		{
+			return;
+		}
+
+		if (_size + count > _capacity)
+		{
+			size_t new_cap = std::max(_capacity * 2, _size + count);
+			reserve(new_cap);
+		}
+
+		size_t elems_to_move = _size - pos;
+		if (elems_to_move > 0)
+		{
+			std::uninitialized_move(_data + pos, _data + _size, _data + pos + count);
+		}
+
+		std::copy(ilist.begin(), ilist.end(), _data + pos);
+		_size += count;
+	}
+
+	template<typename... Args>
+	T& emplace(size_t pos, Args&&... args)
+	{
+		if (pos > _size)
+		{
+			throw std::out_of_range("invalid vector subscript");
+		}
+
+		if (_size == _capacity)
+		{
+			size_t new_cap = (_capacity == 0) ? 1 : _capacity * 2;
+			reserve(new_cap);
+		}
+
+		if (pos < _size)
+		{
+			AllocTraits::construct(_allocator, _data + _size, std::move_if_noexcept(_data[_size - 1]));
+			std::move_backward(_data + pos, _data + _size, _data + _size + 1);
 			AllocTraits::destroy(_allocator, _data + pos);
-
-			for (size_t i = pos; i < _size - 1; ++i)
-			{
-				AllocTraits::construct(_allocator, _data + i, std::move(_data[i + 1]));
-				AllocTraits::destroy(_allocator, _data + i + 1);
-			}
-
-			--_size;
+			AllocTraits::construct(_allocator, _data + pos, std::forward<Args>(args)...);
+		}
+		else
+		{
+			AllocTraits::construct(_allocator, _data + pos, std::forward<Args>(args)...);
 		}
 
-		void erase(size_t first, size_t last)
+		++_size;
+
+		return _data[pos];
+	}
+
+	void erase(size_t pos)
+	{
+		if (pos >= _size)
 		{
-			if (first > last || last > _size)
-			{
-				throw std::out_of_range("invalid vector subscript");
-			}
-
-			for (size_t i = first; i < last; ++i)
-			{
-				AllocTraits::destroy(_allocator, _data + i);
-			}
-
-			size_t count = last - first;
-			for (size_t i = first; i < _size - count; ++i)
-			{
-				AllocTraits::construct(_allocator, _data + i, std::move(_data[i + count]));
-				AllocTraits::destroy(_allocator, _data + i + count);
-			}
-
-			_size -= count;
+			throw std::out_of_range("invalid vector subscript");
 		}
 
-		void push_back(const T& value)
+		std::move(_data + pos + 1, _data + _size, _data + pos);
+		pop_back();
+	}
+
+	void erase(size_t first, size_t last)
+	{
+		if (first > last || last > _size)
 		{
-			check_capacity();
-			AllocTraits::construct(_allocator, _data + _size, value);
-			++_size;
+			throw std::out_of_range("invalid vector subscript");
 		}
 
-		void push_back(T&& value)
+		if (first == last)
 		{
-			check_capacity();
-			AllocTraits::construct(_allocator, _data + _size, std::move(value));
-			++_size;
+			return;
 		}
 
-		template<typename... Args>
-		T& emplace_back(Args&&... args)
+		size_t num_to_erase = last - first;
+		size_t num_to_move = _size - last;
+
+		if (num_to_move > 0)
 		{
-			check_capacity();
-			AllocTraits::construct(_allocator, _data + _size, std::forward<Args>(args)...);
-			++_size;
-			return _data[_size - 1];
+			std::move(_data + last, _data + _size, _data + first);
 		}
 
-		void pop_back()
+		for (size_t i = _size - num_to_erase; i < _size; ++i)
 		{
-			if (_size == 0)
-			{
-				return;
-			}
-
-			AllocTraits::destroy(_allocator, _data + _size - 1);
-			--_size;
+			AllocTraits::destroy(_allocator, _data + i);
 		}
 
-		void resize(size_t count)
-		{
-			if (count < _size)
-			{
-				for (size_t i = count; i < _size; ++i)
-				{
-					AllocTraits::destroy(_allocator, _data + i);
-				}
-			}
-			else if (count > _size)
-			{
-				reserve(count);
-				for (size_t i = _size; i < count; ++i)
-				{
-					AllocTraits::construct(_allocator, _data + i, T());
-				}
-			}
+		_size -= num_to_erase;
+	}
 
-			_size = count;
+	void push_back(const T& value)
+	{
+		if (_size == _capacity)
+		{
+			size_t new_cap = (_capacity == 0) ? 1 : _capacity * 2;
+			reserve(new_cap);
 		}
 
-		void resize(size_t count, const T& value)
-		{
-			if (count < _size)
-			{
-				for (size_t i = count; i < _size; ++i)
-				{
-					AllocTraits::destroy(_allocator, _data + i);
-				}
-			}
-			else if (count > _size)
-			{
-				reserve(count);
-				for (size_t i = _size; i < count; ++i)
-				{
-					AllocTraits::construct(_allocator, _data + i, value);
-				}
-			}
+		AllocTraits::construct(_allocator, _data + _size, value);
+		++_size;
+	}
 
-			_size = count;
+	void push_back(T&& value)
+	{
+		emplace_back(std::move(value));
+	}
+
+	template<typename... Args>
+	T& emplace_back(Args&&... args)
+	{
+		if (_size == _capacity)
+		{
+			size_t new_cap = (_capacity == 0) ? 1 : _capacity * 2;
+			reserve(new_cap);
 		}
 
-		void swap(Vector& other)
+		AllocTraits::construct(_allocator, _data + _size, std::forward<Args>(args)...);
+		++_size;
+
+		return back();
+	}
+
+	void pop_back()
+	{
+		assert(!empty() && "pop_back() called on empty Vector");
+
+		--_size;
+		AllocTraits::destroy(_allocator, _data + _size);
+	}
+
+	void resize(size_t count)
+	{
+		if (count < _size)
 		{
-			std::swap(_data, other._data);
-			std::swap(_size, other._size);
-			std::swap(_capacity, other._capacity);
-			if (AllocTraits::propagate_on_container_swap::value)
+			erase(count, _size);
+		}
+		else if (count > _size)
+		{
+			reserve(count);
+			for (size_t i = _size; i < count; ++i)
 			{
-				std::swap(_allocator, other._allocator);
+				AllocTraits::construct(_allocator, _data + i, T());
 			}
 		}
 
-	public:
-		bool operator==(const Vector& other) const
-		{
-			if (_size != other._size)
-			{
-				return false;
-			}
+		_size = count;
+	}
 
+	void resize(size_t count, const T& value)
+	{
+		if (count < _size)
+		{
+			erase(count, _size);
+		}
+		else if (count > _size)
+		{
+			insert(size(), count - _size, value);
+		}
+	}
+
+	void swap(Vector& other)
+	{
+		std::swap(_data, other._data);
+		std::swap(_size, other._size);
+		std::swap(_capacity, other._capacity);
+		if constexpr (AllocTraits::propagate_on_container_swap::value)
+		{
+			std::swap(_allocator, other._allocator);
+		}
+	}
+
+public:
+	bool operator==(const Vector& other) const
+	{
+		if (_size != other._size)
+		{
+			return false;
+		}
+
+		return std::equal(_data, _data + _size, other._data);
+	}
+
+	bool operator!=(const Vector& other) const
+	{
+		return !(*this == other);
+	}
+
+private:
+	void reallocate(size_t new_cap)
+	{
+		T* new_data = AllocTraits::allocate(_allocator, new_cap);
+
+		size_t new_size = std::min(_size, new_cap);
+		for (size_t i = 0; i < new_size; ++i)
+		{
+			AllocTraits::construct(_allocator, new_data + i, std::move_if_noexcept(_data[i]));
+		}
+
+		destroy_elements();
+		AllocTraits::deallocate(_allocator, _data, _capacity);
+
+		_data = new_data;
+		_size = new_size;
+		_capacity = new_cap;
+	}
+
+	void destroy_elements()
+	{
+		if constexpr (!std::is_trivially_destructible_v<T>)
+		{
 			for (size_t i = 0; i < _size; ++i)
 			{
-				if (_data[i] != other._data[i])
-				{
-					return false;
-				}
-			}
-
-			return true;
-		}
-
-		bool operator!=(const Vector& other) const
-		{
-			return !(*this == other);
-		}
-
-	private:
-		void check_capacity(size_t count = 0)
-		{
-			if (count != 0)
-			{
-				if (_size + count > _capacity)
-				{
-					size_t new_cap = std::max(_size + count, _capacity * 2);
-					reserve(new_cap);
-				}
-			}
-			else
-			{
-				if (_size == _capacity)
-				{
-					size_t new_cap = _capacity == 0 ? 1 : _capacity * 2;
-					reserve(new_cap);
-				}
+				AllocTraits::destroy(_allocator, _data + i);
 			}
 		}
+	}
 
-	private:
-		T* _data;
-		size_t _size;
-		size_t _capacity;
-		Allocator _allocator;
-	};
+private:
+	T* _data;
+	size_t _size;
+	size_t _capacity;
+	Allocator _allocator;
+};
+
 } // namespace abouttt
