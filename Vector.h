@@ -3,29 +3,29 @@
 #include <cassert>
 #include <initializer_list>
 #include <memory>
-#include <utility>
 #include <stdexcept>
+#include <utility>
 
-template<typename T>
+template<typename T, typename Allocator = std::allocator<T>>
 class Vector
 {
 private:
-	using AllocTraits = std::allocator_traits<std::allocator<T>>;
+	using AllocTraits = std::allocator_traits<Allocator>;
 
 public:
-	Vector()
+	Vector(const Allocator& alloc = Allocator())
 		: _data(nullptr)
 		, _size(0)
 		, _capacity(0)
-		, _allocator()
+		, _allocator(alloc)
 	{
 	}
 
-	Vector(size_t count)
+	Vector(size_t count, const Allocator& alloc = Allocator())
 		: _data(nullptr)
 		, _size(count)
 		, _capacity(count)
-		, _allocator()
+		, _allocator(alloc)
 	{
 		if (count > 0)
 		{
@@ -34,11 +34,11 @@ public:
 		}
 	}
 
-	Vector(size_t count, const T& value)
+	Vector(size_t count, const T& value, const Allocator& alloc = Allocator())
 		: _data(nullptr)
 		, _size(count)
 		, _capacity(count)
-		, _allocator()
+		, _allocator(alloc)
 	{
 		if (count > 0)
 		{
@@ -47,11 +47,11 @@ public:
 		}
 	}
 
-	Vector(std::initializer_list<T> init)
+	Vector(std::initializer_list<T> init, const Allocator& alloc = Allocator())
 		: _data(nullptr)
 		, _size(init.size())
 		, _capacity(init.size())
-		, _allocator()
+		, _allocator(alloc)
 	{
 		if (_size > 0)
 		{
@@ -64,7 +64,7 @@ public:
 		: _data(nullptr)
 		, _size(other._size)
 		, _capacity(other._size)
-		, _allocator(other._allocator)
+		, _allocator(AllocTraits::select_on_container_copy_construction(other._allocator))
 	{
 		if (_size > 0)
 		{
@@ -112,6 +112,7 @@ public:
 			_data = other._data;
 			_size = other._size;
 			_capacity = other._capacity;
+			_allocator = std::move(other._allocator);
 
 			other._data = nullptr;
 			other._size = 0;
@@ -157,6 +158,11 @@ public:
 			std::uninitialized_copy(ilist.begin(), ilist.end(), _data);
 			_size = ilist.size();
 		}
+	}
+
+	Allocator get_allocator() const
+	{
+		return _allocator;
 	}
 
 public: // Element access
@@ -233,6 +239,11 @@ public: // Capacity
 	size_t size() const
 	{
 		return _size;
+	}
+
+	size_t max_size() const
+	{
+		return AllocTraits::max_size(_allocator);
 	}
 
 	void reserve(size_t new_cap)
@@ -360,7 +371,7 @@ public: // Modifiers
 			throw std::out_of_range("Vector erase range out of range");
 		}
 
-		for (size_t i = 0; i < count; ++i)
+		for (size_t i = 0; i < count; i++)
 		{
 			AllocTraits::destroy(_allocator, _data + pos + i);
 		}
@@ -390,7 +401,7 @@ public: // Modifiers
 		AllocTraits::construct(_allocator, _data + _size, std::forward<Args>(args)...);
 		_size++;
 
-		return _data[_size - 1];
+		return back();
 	}
 
 	void pop_back()
@@ -442,7 +453,10 @@ public: // Modifiers
 		std::swap(_data, other._data);
 		std::swap(_size, other._size);
 		std::swap(_capacity, other._capacity);
-		std::swap(_allocator, other._allocator);
+		if (AllocTraits::propagate_on_container_swap::value)
+		{
+			std::swap(_allocator, other._allocator);
+		}
 	}
 
 public:
@@ -469,7 +483,7 @@ private:
 		size_t new_size = std::min(_size, new_cap);
 		for (size_t i = 0; i < new_size; i++)
 		{
-			AllocTraits::construct(_allocator, new_data + i, std::move(_data[i]));
+			AllocTraits::construct(_allocator, new_data + i, std::move_if_noexcept(_data[i]));
 		}
 
 		destroy_elements();
@@ -482,9 +496,12 @@ private:
 
 	void destroy_elements()
 	{
-		for (size_t i = 0; i < _size; i++)
+		if constexpr (!std::is_trivially_destructible_v<T>)
 		{
-			AllocTraits::destroy(_allocator, _data + i);
+			for (size_t i = 0; i < _size; ++i)
+			{
+				AllocTraits::destroy(_allocator, _data + i);
+			}
 		}
 	}
 
@@ -492,5 +509,5 @@ private:
 	T* _data;
 	size_t _size;
 	size_t _capacity;
-	std::allocator<T> _allocator;
+	Allocator _allocator;
 };
