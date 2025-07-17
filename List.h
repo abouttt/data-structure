@@ -117,6 +117,7 @@ public:
 			if constexpr (AllocTraits::propagate_on_container_copy_assignment::value)
 			{
 				_allocator = other._allocator;
+				_node_allocator = other._node_allocator;
 			}
 
 			for (NodeBase* cur = other._sentinel.next; cur != &other._sentinel; cur = cur->next)
