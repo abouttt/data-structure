@@ -450,6 +450,11 @@ public: // Modifiers
 
 	void swap(Vector& other)
 	{
+		if (this == &other)
+		{
+			return;
+		}
+
 		std::swap(_data, other._data);
 		std::swap(_size, other._size);
 		std::swap(_capacity, other._capacity);
