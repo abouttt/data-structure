@@ -414,40 +414,26 @@ public: // Modifiers
 			return;
 		}
 
-		if (!empty() && !other.empty())
-		{
-			std::swap(_sentinel.next, other._sentinel.next);
-			std::swap(_sentinel.prev, other._sentinel.prev);
-			std::swap(_size, other._size);
+		std::swap(_sentinel.next, other._sentinel.next);
+		std::swap(_sentinel.prev, other._sentinel.prev);
+		std::swap(_size, other._size);
 
+		if (_sentinel.next)
+		{
 			_sentinel.next->prev = &_sentinel;
-			_sentinel.prev->next = &_sentinel;
-			other._sentinel.next->prev = &other._sentinel;
-			other._sentinel.prev->next = &other._sentinel;
 		}
-		else if (!empty())
+		if (_sentinel.prev)
 		{
-			other._sentinel.next = _sentinel.next;
-			other._sentinel.prev = _sentinel.prev;
-			other._sentinel.next->prev = &other._sentinel;
-			other._sentinel.prev->next = &other._sentinel;
-			other._size = _size;
-
-			_sentinel.next = &_sentinel;
-			_sentinel.prev = &_sentinel;
-			_size = 0;
-		}
-		else if (!other.empty())
-		{
-			_sentinel.next = other._sentinel.next;
-			_sentinel.prev = other._sentinel.prev;
-			_sentinel.next->prev = &_sentinel;
 			_sentinel.prev->next = &_sentinel;
-			_size = other._size;
+		}
 
-			other._sentinel.next = &other._sentinel;
-			other._sentinel.prev = &other._sentinel;
-			other._size = 0;
+		if (other._sentinel.next)
+		{
+			other._sentinel.next->prev = &other._sentinel;
+		}
+		if (other._sentinel.prev)
+		{
+			other._sentinel.prev->next = &other._sentinel;
 		}
 
 		if constexpr (AllocTraits::propagate_on_container_swap::value)
