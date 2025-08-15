@@ -1,7 +1,9 @@
 #pragma once
 
+#include <algorithm>
 #include <concepts>
 #include <initializer_list>
+#include <iterator>
 #include <new>
 #include <memory>
 #include <stdexcept>
@@ -23,9 +25,7 @@ public:
 	}
 
 	explicit DynamicArray(size_t capacity)
-		: mData(nullptr)
-		, mSize(0)
-		, mCapacity(capacity)
+		: DynamicArray()
 	{
 		allocate(mCapacity);
 	}
@@ -36,7 +36,7 @@ public:
 		, mCapacity(values.size())
 	{
 		allocate(mCapacity);
-		std::uninitialized_copy_n(values.begin(), mSize, mData);
+		std::uninitialized_copy(values.begin(), values.end(), mData);
 	}
 
 	DynamicArray(const DynamicArray& other)
@@ -44,8 +44,8 @@ public:
 		, mSize(other.mSize)
 		, mCapacity(other.mSize)
 	{
-		allocate(other.mCapacity);
-		std::uninitialized_copy_n(other.mData, other.mSize, mData);
+		allocate(mCapacity);
+		std::uninitialized_copy_n(other.mData, mSize, mData);
 	}
 
 	DynamicArray(DynamicArray&& other) noexcept
@@ -110,15 +110,7 @@ public:
 			return false;
 		}
 
-		for (size_t i = 0; i < mSize; i++)
-		{
-			if (mData[i] != other.mData[i])
-			{
-				return false;
-			}
-		}
-
-		return true;
+		return std::equal(mData, mData + mSize, other.mData);
 	}
 
 	bool operator!=(const DynamicArray& other) const
@@ -135,6 +127,19 @@ public:
 	void Add(T&& value)
 	{
 		Emplace(std::move(value));
+	}
+
+	void AddRange(std::initializer_list<T> values)
+	{
+		size_t count = values.size();
+		if (count == 0)
+		{
+			return;
+		}
+
+		EnsureCapacity(mSize + count);
+		std::uninitialized_copy(values.begin(), values.end(), mData + mSize);
+		mSize += count;
 	}
 
 	T& At(size_t index)
@@ -155,19 +160,6 @@ public:
 		}
 
 		return mData[index];
-	}
-
-	void AddRange(std::initializer_list<T> values)
-	{
-		size_t count = values.size();
-		if (count == 0)
-		{
-			return;
-		}
-
-		EnsureCapacity(mSize + count);
-		std::uninitialized_copy(values.begin(), values.end(), mData + mSize);
-		mSize += count;
 	}
 
 	size_t Capacity() const noexcept
@@ -196,6 +188,16 @@ public:
 		}
 
 		return false;
+	}
+
+	T* Data() noexcept
+	{
+		return mData;
+	}
+
+	const T* Data() const noexcept
+	{
+		return mData;
 	}
 
 	void EnsureCapacity(size_t capacity)
@@ -253,6 +255,133 @@ public:
 		return mSize == 0;
 	}
 
+	size_t Find(const T& value) const
+	{
+		return Find(0, mSize, value);
+	}
+
+	size_t Find(size_t startIndex, const T& value) const
+	{
+		return Find(startIndex, mSize - startIndex, value);
+	}
+
+	size_t Find(size_t startIndex, size_t count, const T& value) const
+	{
+		if (startIndex + count > mSize)
+		{
+			throw std::out_of_range("Index out of range");
+		}
+
+		for (size_t i = startIndex; i < startIndex + count; i++)
+		{
+			if (mData[i] == value)
+			{
+				return i;
+			}
+		}
+
+		return mSize;
+	}
+
+	template<std::predicate<T> Predicate>
+	size_t FindIf(Predicate&& pred) const
+	{
+		return FindIf(0, mSize, pred);
+	}
+
+	template<std::predicate<T> Predicate>
+	size_t FindIf(size_t startIndex, Predicate&& pred) const
+	{
+		return FindIf(startIndex, mSize - startIndex, pred);
+	}
+
+	template<std::predicate<T> Predicate>
+	size_t FindIf(size_t startIndex, size_t count, Predicate&& pred) const
+	{
+		if (startIndex + count > mSize)
+		{
+			throw std::out_of_range("Index out of range");
+		}
+
+		for (size_t i = startIndex; i < startIndex + count; i++)
+		{
+			if (pred(mData[i]))
+			{
+				return i;
+			}
+		}
+
+		return mSize;
+	}
+
+	size_t FindLast(const T& value) const
+	{
+		return FindLast(0, mSize, value);
+	}
+
+	size_t FindLast(size_t startIndex, const T& value) const
+	{
+		return FindLast(startIndex, mSize - startIndex, value);
+	}
+
+	size_t FindLast(size_t startIndex, size_t count, const T& value) const
+	{
+		if (startIndex + count > mSize)
+		{
+			throw std::out_of_range("Index out of range");
+		}
+
+		for (size_t i = startIndex + count; i > startIndex; i--)
+		{
+			if (mData[i - 1] == value)
+			{
+				return i - 1;
+			}
+		}
+
+		return mSize;
+	}
+
+	template<std::predicate<T> Predicate>
+	size_t FindLastIf(Predicate&& pred) const
+	{
+		return FindLastIf(0, mSize, pred);
+	}
+
+	template<std::predicate<T> Predicate>
+	size_t FindLastIf(size_t startIndex, Predicate&& pred) const
+	{
+		return FindLastIf(startIndex, mSize - startIndex, pred);
+	}
+
+	template<std::predicate<T> Predicate>
+	size_t FindLastIf(size_t startIndex, size_t count, Predicate&& pred) const
+	{
+		if (startIndex + count > mSize)
+		{
+			throw std::out_of_range("Index out of range");
+		}
+
+		for (size_t i = startIndex + count; i > startIndex; i--)
+		{
+			if (pred(mData[i - 1]))
+			{
+				return i - 1;
+			}
+		}
+
+		return mSize;
+	}
+
+	template<typename Func>
+	void ForEach(Func&& func) const
+	{
+		for (size_t i = 0; i < mSize; i++)
+		{
+			func(mData[i]);
+		}
+	}
+
 	void Insert(size_t index, const T& value)
 	{
 		EmplaceAt(index, value);
@@ -302,6 +431,27 @@ public:
 		return false;
 	}
 
+	template<std::predicate<T> Predicate>
+	size_t RemoveAll(Predicate&& pred)
+	{
+		T* newEnd = std::remove_if(mData, mData + mSize, std::forward<Predicate>(pred));
+		if (newEnd == mData + mSize)
+		{
+			return 0;
+		}
+
+		size_t originalSize = mSize;
+		size_t newSize = std::distance(mData, newEnd);
+
+		if constexpr (!std::is_trivially_destructible_v<T>)
+		{
+			std::destroy(newEnd, mData + mSize);
+		}
+
+		mSize = newSize;
+		return originalSize - newSize;
+	}
+
 	bool RemoveAt(size_t index)
 	{
 		if (index >= mSize)
@@ -342,7 +492,17 @@ public:
 		mSize -= count;
 	}
 
-	void ShrinkToFit()
+	void Reverse()
+	{
+		if (mSize <= 1)
+		{
+			return;
+		}
+
+		std::reverse(mData, mData + mSize);
+	}
+
+	void Shrink()
 	{
 		if (mSize < mCapacity)
 		{
@@ -353,6 +513,57 @@ public:
 	size_t Size() const noexcept
 	{
 		return mSize;
+	}
+
+	DynamicArray Slice(size_t index, size_t count) const
+	{
+		if (index + count > mSize)
+		{
+			throw std::out_of_range("Index out of range");
+		}
+
+		DynamicArray result(count);
+		std::uninitialized_copy_n(mData + index, count, result.mData);
+		result.mSize = count;
+
+		return result;
+	}
+
+	void Sort()
+	{
+		if (mSize <= 1)
+		{
+			return;
+		}
+
+		std::sort(mData, mData + mSize);
+	}
+
+	template<typename Compare>
+	void Sort(Compare&& comparison)
+	{
+		if (mSize <= 1)
+		{
+			return;
+		}
+
+		std::sort(mData, mData + mSize, std::forward<Compare>(comparison));
+	}
+
+	template<typename Compare>
+	void Sort(size_t index, size_t count, Compare&& comparison)
+	{
+		if (index + count > mSize)
+		{
+			throw std::out_of_range("Index out of range");
+		}
+
+		if (count <= 1)
+		{
+			return;
+		}
+
+		std::sort(mData + index, mData + index + count, std::forward<Compare>(comparison));
 	}
 
 	void Swap(DynamicArray& other) noexcept
