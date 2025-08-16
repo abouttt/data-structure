@@ -14,23 +14,23 @@ namespace abouttt
 {
 
 template<typename T>
-class DynamicArray
+class Array
 {
 public:
-	DynamicArray() noexcept
+	Array() noexcept
 		: mData(nullptr)
 		, mSize(0)
 		, mCapacity(0)
 	{
 	}
 
-	explicit DynamicArray(size_t capacity)
-		: DynamicArray()
+	explicit Array(size_t capacity)
+		: Array()
 	{
 		allocate(mCapacity);
 	}
 
-	DynamicArray(std::initializer_list<T> values)
+	Array(std::initializer_list<T> values)
 		: mData(nullptr)
 		, mSize(values.size())
 		, mCapacity(values.size())
@@ -39,7 +39,7 @@ public:
 		std::uninitialized_copy(values.begin(), values.end(), mData);
 	}
 
-	DynamicArray(const DynamicArray& other)
+	Array(const Array& other)
 		: mData(nullptr)
 		, mSize(other.mSize)
 		, mCapacity(other.mSize)
@@ -48,7 +48,7 @@ public:
 		std::uninitialized_copy_n(other.mData, mSize, mData);
 	}
 
-	DynamicArray(DynamicArray&& other) noexcept
+	Array(Array&& other) noexcept
 		: mData(other.mData)
 		, mSize(other.mSize)
 		, mCapacity(other.mCapacity)
@@ -58,7 +58,7 @@ public:
 		other.mCapacity = 0;
 	}
 
-	~DynamicArray()
+	~Array()
 	{
 		deallocate();
 	}
@@ -74,18 +74,18 @@ public:
 		return mData[index];
 	}
 
-	DynamicArray& operator=(const DynamicArray& other)
+	Array& operator=(const Array& other)
 	{
 		if (this != &other)
 		{
-			DynamicArray temp(other);
+			Array temp(other);
 			Swap(temp);
 		}
 
 		return *this;
 	}
 
-	DynamicArray& operator=(DynamicArray&& other) noexcept
+	Array& operator=(Array&& other) noexcept
 	{
 		if (this != &other)
 		{
@@ -103,7 +103,7 @@ public:
 		return *this;
 	}
 
-	bool operator==(const DynamicArray& other) const
+	bool operator==(const Array& other) const
 	{
 		if (mSize != other.mSize)
 		{
@@ -113,7 +113,7 @@ public:
 		return std::equal(mData, mData + mSize, other.mData);
 	}
 
-	bool operator!=(const DynamicArray& other) const
+	bool operator!=(const Array& other) const
 	{
 		return !(*this == other);
 	}
@@ -515,14 +515,14 @@ public:
 		return mSize;
 	}
 
-	DynamicArray Slice(size_t index, size_t count) const
+	Array Slice(size_t index, size_t count) const
 	{
 		if (index + count > mSize)
 		{
 			throw std::out_of_range("Index out of range");
 		}
 
-		DynamicArray result(count);
+		Array result(count);
 		std::uninitialized_copy_n(mData + index, count, result.mData);
 		result.mSize = count;
 
@@ -566,7 +566,7 @@ public:
 		std::sort(mData + index, mData + index + count, std::forward<Compare>(comparison));
 	}
 
-	void Swap(DynamicArray& other) noexcept
+	void Swap(Array& other) noexcept
 	{
 		std::swap(mData, other.mData);
 		std::swap(mSize, other.mSize);
