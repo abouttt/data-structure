@@ -27,7 +27,7 @@ public:
 	explicit Array(size_t capacity)
 		: Array()
 	{
-		allocate(mCapacity);
+		allocate(capacity);
 	}
 
 	Array(std::initializer_list<T> values)
