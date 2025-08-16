@@ -260,22 +260,22 @@ public:
 
 	size_t Find(const T& value) const
 	{
-		return Find(0, mSize, value);
+		return Find(value, 0, mSize);
 	}
 
-	size_t Find(size_t startIndex, const T& value) const
+	size_t Find(const T& value, size_t index) const
 	{
-		return Find(startIndex, mSize - startIndex, value);
+		return Find(value, index, mSize - index);
 	}
 
-	size_t Find(size_t startIndex, size_t count, const T& value) const
+	size_t Find(const T& value, size_t index, size_t count) const
 	{
-		if (startIndex + count > mSize)
+		if (index + count > mSize)
 		{
 			throw std::out_of_range("Index out of range");
 		}
 
-		for (size_t i = startIndex; i < startIndex + count; i++)
+		for (size_t i = index; i < index + count; i++)
 		{
 			if (mData[i] == value)
 			{
@@ -319,22 +319,22 @@ public:
 
 	size_t FindLast(const T& value) const
 	{
-		return FindLast(0, mSize, value);
+		return FindLast(value, 0, mSize);
 	}
 
-	size_t FindLast(size_t startIndex, const T& value) const
+	size_t FindLast(const T& value, size_t index) const
 	{
-		return FindLast(startIndex, mSize - startIndex, value);
+		return FindLast(value, index, mSize - index);
 	}
 
-	size_t FindLast(size_t startIndex, size_t count, const T& value) const
+	size_t FindLast(const T& value, size_t index, size_t count) const
 	{
-		if (startIndex + count > mSize)
+		if (index + count > mSize)
 		{
 			throw std::out_of_range("Index out of range");
 		}
 
-		for (size_t i = startIndex + count; i > startIndex; i--)
+		for (size_t i = index + count; i > index; i--)
 		{
 			if (mData[i - 1] == value)
 			{
