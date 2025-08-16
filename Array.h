@@ -244,7 +244,10 @@ public:
 
 		std::construct_at(mData + mSize, std::move(mData[mSize - 1]));
 		std::move_backward(mData + index, mData + mSize - 1, mData + mSize);
-		mData[index] = T(std::forward<Args>(args)...);
+
+		std::destroy_at(mData + index);
+		std::construct_at(mData + index, std::forward<Args>(args)...);
+
 		mSize++;
 
 		return mData[index];
