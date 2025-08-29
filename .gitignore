@@ -416,3 +416,8 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Custom
+main.cpp
+*.vcxproj
+*.vcxproj.filters
