@@ -100,6 +100,14 @@ public:
 		return mData[index];
 	}
 
+	auto operator<=>(const Array& other) const
+	{
+		return std::lexicographical_compare_three_way(
+			mData, mData + mCount,
+			other.mData, other.mData + other.mCount
+		);
+	}
+
 	bool operator==(const Array& other) const
 	{
 		if (mCount != other.mCount)
@@ -108,14 +116,6 @@ public:
 		}
 
 		return std::equal(mData, mData + mCount, other.mData);
-	}
-
-	auto operator<=>(const Array& other) const
-	{
-		return std::lexicographical_compare_three_way(
-			mData, mData + mCount,
-			other.mData, other.mData + other.mCount
-		);
 	}
 
 public:
@@ -162,33 +162,17 @@ public:
 
 	void AddRange(std::initializer_list<T> init)
 	{
-		AddRange(init.begin(), init.size());
+		InsertRange(mCount, init.begin(), init.size());
 	}
 
 	void AddRange(const Array& array)
 	{
-		if (this == &array)
-		{
-			Array temp(array);
-			AddRange(temp.mData, temp.mCount);
-		}
-		else
-		{
-			AddRange(array.mData, array.mCount);
-		}
+		InsertRange(mCount, array);
 	}
 
 	void AddRange(const T* values, size_t count)
 	{
-		if (!values || count == 0)
-		{
-			return;
-		}
-
-		ensureCapacity(mCount + count);
-
-		std::uninitialized_copy_n(values, count, mData + mCount);
-		mCount += count;
+		InsertRange(mCount, values, count);
 	}
 
 	T& At(size_t index)
