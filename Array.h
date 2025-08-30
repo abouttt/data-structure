@@ -119,6 +119,37 @@ public:
 	}
 
 public:
+	T* begin()
+	{
+		return mData;
+	}
+
+	const T* begin() const
+	{
+		return mData;
+	}
+
+	T* end()
+	{
+		return mData + mCount;
+	}
+
+	const T* end() const
+	{
+		return mData + mCount;
+	}
+
+	const T* cbegin() const
+	{
+		return mData;
+	}
+
+	const T* cend() const
+	{
+		return mData + mCount;
+	}
+
+public:
 	void Add(const T& value)
 	{
 		Emplace(value);
