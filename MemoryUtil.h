@@ -1,11 +1,10 @@
 #pragma once
 
 #include <algorithm>
-#include <cassert>
 #include <cmath>
 #include <cstddef>
-#include <cstring>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -27,76 +26,6 @@ using ValueType = typename AllocTraits<Alloc>::value_type;
 template <typename Alloc>
 using SizeType = typename AllocTraits<Alloc>::size_type;
 
-template <typename Alloc, typename FwdIt>
-class DestroyGuard
-{
-public:
-	DestroyGuard(Alloc& alloc, FwdIt first) noexcept
-		: mAlloc(std::addressof(alloc))
-		, mFirst(first)
-		, mCurrent(first)
-		, mActive(true)
-	{
-	}
-
-	~DestroyGuard() noexcept
-	{
-		if (!mActive)
-		{
-			return;
-		}
-
-		for (FwdIt it = mFirst; it != mCurrent; ++it)
-		{
-			AllocTraits<Alloc>::destroy(*mAlloc, std::to_address(it));
-		}
-	}
-
-	DestroyGuard(const DestroyGuard&) = delete;
-	DestroyGuard(DestroyGuard&&) = delete;
-	DestroyGuard& operator=(const DestroyGuard&) = delete;
-	DestroyGuard& operator=(DestroyGuard&&) = delete;
-
-public:
-	void Advance() noexcept
-	{
-		++mCurrent;
-	}
-
-	void Advance(SizeType<Alloc> n) noexcept
-	{
-		if constexpr (std::random_access_iterator<FwdIt>)
-		{
-			mCurrent += static_cast<ptrdiff_t>(n);
-		}
-		else
-		{
-			std::advance(mCurrent, static_cast<ptrdiff_t>(n));
-		}
-	}
-
-	FwdIt Current() const noexcept
-	{
-		return mCurrent;
-	}
-
-	void SetCurrent(FwdIt it) noexcept
-	{
-		mCurrent = it;
-	}
-
-	void Release() noexcept
-	{
-		mActive = false;
-	}
-
-private:
-	Alloc* const mAlloc;
-	FwdIt const mFirst;
-	FwdIt mCurrent;
-	bool mActive;
-};
-
 // --- allocation helpers ---
 
 template <typename Alloc>
@@ -106,9 +35,9 @@ template <typename Alloc>
 }
 
 template <typename Alloc>
-inline void Deallocate(Alloc& alloc, AllocPointer<Alloc> ptr, SizeType<Alloc> count) noexcept
+inline void Deallocate(Alloc& alloc, AllocPointer<Alloc> ptr, SizeType<Alloc> count)
 {
-	if (std::to_address(ptr))
+	if (ptr)
 	{
 		AllocTraits<Alloc>::deallocate(alloc, ptr, count);
 	}
@@ -116,70 +45,72 @@ inline void Deallocate(Alloc& alloc, AllocPointer<Alloc> ptr, SizeType<Alloc> co
 
 // --- construct/destroy helpers ---
 
-template <typename Alloc, typename It, typename... Args>
-inline void ConstructAt(Alloc& alloc, It it, Args&&... args)
+template <typename Alloc, typename Ptr, typename... Args>
+inline void ConstructAt(Alloc& alloc, Ptr ptr, Args&&... args)
 {
-	AllocTraits<Alloc>::construct(alloc, std::to_address(it), std::forward<Args>(args)...);
+	AllocTraits<Alloc>::construct(alloc, ptr, std::forward<Args>(args)...);
 }
 
-template <typename Alloc, typename It>
-inline void DestroyAt(Alloc& alloc, It it) noexcept
+template <typename Alloc, typename Ptr>
+inline void DestroyAt(Alloc& alloc, Ptr ptr)
 {
-	AllocTraits<Alloc>::destroy(alloc, std::to_address(it));
-}
-
-template <typename Alloc, typename FwdIt>
-inline void Destroy(Alloc& alloc, FwdIt first, FwdIt last) noexcept
-{
-	for (; first != last; ++first)
-	{
-		DestroyAt(alloc, first);
-	}
+	AllocTraits<Alloc>::destroy(alloc, ptr);
 }
 
 template <typename Alloc, typename FwdIt>
-inline FwdIt DestroyN(Alloc& alloc, FwdIt first, SizeType<Alloc> count) noexcept
+inline void Destroy(Alloc& alloc, FwdIt first, FwdIt last)
 {
-	for (SizeType<Alloc> i = 0; i < count; ++i, ++first)
+	for (auto it = first; it != last; ++it)
 	{
-		DestroyAt(alloc, first);
-	}
-	return first;
-}
-
-template <typename Alloc, typename BidIt>
-inline void DestroyBackward(Alloc& alloc, BidIt first, BidIt last) noexcept
-{
-	while (last != first)
-	{
-		--last;
-		DestroyAt(alloc, last);
+		DestroyAt(alloc, it);
 	}
 }
 
-template <typename Alloc, typename BidIt>
-inline BidIt DestroyBackwardN(Alloc& alloc, BidIt last, SizeType<Alloc> count) noexcept
+template <typename Alloc, typename FwdIt>
+inline FwdIt DestroyN(Alloc& alloc, FwdIt first, SizeType<Alloc> count)
 {
+	auto current = first;
+	for (SizeType<Alloc> i = 0; i < count; ++i, ++current)
+	{
+		DestroyAt(alloc, current);
+	}
+	return current;
+}
+
+template <typename Alloc, typename BidIt>
+inline void DestroyBackward(Alloc& alloc, BidIt first, BidIt last)
+{
+	auto current = last;
+	while (current != first)
+	{
+		--current;
+		DestroyAt(alloc, current);
+	}
+}
+
+template <typename Alloc, typename BidIt>
+inline BidIt DestroyBackwardN(Alloc& alloc, BidIt last, SizeType<Alloc> count)
+{
+	auto current = last;
 	for (SizeType<Alloc> i = 0; i < count; ++i)
 	{
-		--last;
-		DestroyAt(alloc, last);
+		--current;
+		DestroyAt(alloc, current);
 	}
-	return last;
+	return current;
 }
 
 template <typename Alloc, typename T>
-inline void DestroyCircular(Alloc& alloc, T* buffer, SizeType<Alloc> start, SizeType<Alloc> count, SizeType<Alloc> capacity) noexcept
+inline void DestroyCircular(Alloc& alloc, T* buffer, SizeType<Alloc> start, SizeType<Alloc> count, SizeType<Alloc> capacity)
 {
-	if (capacity == 0 || count == 0)
+	if (!buffer || capacity == 0 || count == 0)
 	{
 		return;
 	}
 
-	assert(count <= capacity && "DestroyCircular: count must not exceed capacity");
-
 	start %= capacity;
 	SizeType<Alloc> end = start + count;
+
 	if (end <= capacity)
 	{
 		DestroyN(alloc, buffer + start, count);
@@ -211,147 +142,202 @@ template <typename Alloc, typename... Args>
 }
 
 template <typename Alloc>
-inline void Delete(Alloc& alloc, AllocPointer<Alloc> ptr) noexcept
+inline void Delete(Alloc& alloc, AllocPointer<Alloc> ptr)
 {
-	if (std::to_address(ptr))
+	if (ptr)
 	{
 		DestroyAt(alloc, ptr);
 		Deallocate(alloc, ptr, 1);
 	}
 }
 
-// --- uninitialized algorithms (use guards for strong exception safety) ---
+// --- uninitialized algorithms ---
 
 template <typename Alloc, typename InIt, typename FwdIt>
 inline FwdIt UninitializedCopy(Alloc& alloc, InIt first, InIt last, FwdIt dest)
 {
-	DestroyGuard<Alloc, FwdIt> guard(alloc, dest);
-	for (; first != last; ++first, ++dest)
+	auto current = dest;
+	try
 	{
-		ConstructAt(alloc, dest, *first);
-		guard.Advance();
+		for (; first != last; ++first, ++current)
+		{
+			ConstructAt(alloc, current, *first);
+		}
+		return current;
 	}
-	guard.Release();
-	return dest;
+	catch (...)
+	{
+		Destroy(alloc, dest, current);
+		throw;
+	}
 }
 
 template <typename Alloc, typename InIt, typename FwdIt>
 inline FwdIt UninitializedCopyN(Alloc& alloc, InIt first, SizeType<Alloc> count, FwdIt dest)
 {
-	DestroyGuard<Alloc, FwdIt> guard(alloc, dest);
-	FwdIt cur = dest;
-	for (SizeType<Alloc> i = 0; i < count; ++i, ++first, ++cur)
+	auto current = dest;
+	try
 	{
-		ConstructAt(alloc, cur, *first);
-		guard.Advance();
+		for (SizeType<Alloc> i = 0; i < count; ++i, ++first, ++current)
+		{
+			ConstructAt(alloc, current, *first);
+		}
+		return current;
 	}
-	guard.Release();
-	return cur;
+	catch (...)
+	{
+		Destroy(alloc, dest, current);
+		throw;
+	}
 }
 
 template <typename Alloc, typename FwdIt>
 inline void UninitializedDefaultConstruct(Alloc& alloc, FwdIt first, FwdIt last)
 {
-	DestroyGuard<Alloc, FwdIt> guard(alloc, first);
-	for (; first != last; ++first)
+	auto current = first;
+	try
 	{
-		AllocTraits<Alloc>::construct(alloc, std::to_address(first));
-		guard.Advance();
+		for (; current != last; ++current)
+		{
+			ConstructAt(alloc, current);
+		}
 	}
-	guard.Release();
+	catch (...)
+	{
+		Destroy(alloc, first, current);
+		throw;
+	}
 }
 
 template <typename Alloc, typename FwdIt>
 inline FwdIt UninitializedDefaultConstructN(Alloc& alloc, FwdIt first, SizeType<Alloc> count)
 {
-	DestroyGuard<Alloc, FwdIt> guard(alloc, first);
-	FwdIt cur = first;
-	for (SizeType<Alloc> i = 0; i < count; ++i, ++cur)
+	auto current = first;
+	try
 	{
-		AllocTraits<Alloc>::construct(alloc, std::to_address(cur));
-		guard.Advance();
+		for (SizeType<Alloc> i = 0; i < count; ++i, ++current)
+		{
+			ConstructAt(alloc, current);
+		}
+		return current;
 	}
-	guard.Release();
-	return cur;
+	catch (...)
+	{
+		Destroy(alloc, first, current);
+		throw;
+	}
 }
 
 template <typename Alloc, typename FwdIt, typename T>
 inline void UninitializedFill(Alloc& alloc, FwdIt first, FwdIt last, const T& value)
 {
-	DestroyGuard<Alloc, FwdIt> guard(alloc, first);
-	for (; first != last; ++first)
+	auto current = first;
+	try
 	{
-		ConstructAt(alloc, first, value);
-		guard.Advance();
+		for (; current != last; ++current)
+		{
+			ConstructAt(alloc, current, value);
+		}
 	}
-	guard.Release();
+	catch (...)
+	{
+		Destroy(alloc, first, current);
+		throw;
+	}
 }
 
 template <typename Alloc, typename FwdIt, typename T>
 inline FwdIt UninitializedFillN(Alloc& alloc, FwdIt first, SizeType<Alloc> count, const T& value)
 {
-	DestroyGuard<Alloc, FwdIt> guard(alloc, first);
-	FwdIt cur = first;
-	for (SizeType<Alloc> i = 0; i < count; ++i, ++cur)
+	auto current = first;
+	try
 	{
-		ConstructAt(alloc, cur, value);
-		guard.Advance();
+		for (SizeType<Alloc> i = 0; i < count; ++i, ++current)
+		{
+			ConstructAt(alloc, current, value);
+		}
+		return current;
 	}
-	guard.Release();
-	return cur;
+	catch (...)
+	{
+		Destroy(alloc, first, current);
+		throw;
+	}
 }
 
 template <typename Alloc, typename InIt, typename FwdIt>
 inline FwdIt UninitializedMove(Alloc& alloc, InIt first, InIt last, FwdIt dest)
 {
-	DestroyGuard<Alloc, FwdIt> guard(alloc, dest);
-	for (; first != last; ++first, ++dest)
+	auto current = dest;
+	try
 	{
-		ConstructAt(alloc, dest, std::move(*first));
-		guard.Advance();
+		for (; first != last; ++first, ++current)
+		{
+			ConstructAt(alloc, current, std::move(*first));
+		}
+		return current;
 	}
-	guard.Release();
-	return dest;
+	catch (...)
+	{
+		Destroy(alloc, dest, current);
+		throw;
+	}
 }
 
 template <typename Alloc, typename InIt, typename FwdIt>
 inline FwdIt UninitializedMoveN(Alloc& alloc, InIt first, SizeType<Alloc> count, FwdIt dest)
 {
-	DestroyGuard<Alloc, FwdIt> guard(alloc, dest);
-	FwdIt cur = dest;
-	for (SizeType<Alloc> i = 0; i < count; ++i, ++first, ++cur)
+	auto current = dest;
+	try
 	{
-		ConstructAt(alloc, cur, std::move(*first));
-		guard.Advance();
+		for (SizeType<Alloc> i = 0; i < count; ++i, ++first, ++current)
+		{
+			ConstructAt(alloc, current, std::move(*first));
+		}
+		return current;
 	}
-	guard.Release();
-	return cur;
+	catch (...)
+	{
+		Destroy(alloc, dest, current);
+		throw;
+	}
 }
 
 template <typename Alloc, typename FwdIt>
 inline void UninitializedValueConstruct(Alloc& alloc, FwdIt first, FwdIt last)
 {
-	DestroyGuard<Alloc, FwdIt> guard(alloc, first);
-	for (; first != last; ++first)
+	auto current = first;
+	try
 	{
-		AllocTraits<Alloc>::construct(alloc, std::to_address(first), ValueType<Alloc>{});
-		guard.Advance();
+		for (; current != last; ++current)
+		{
+			ConstructAt(alloc, current, ValueType<Alloc>{});
+		}
 	}
-	guard.Release();
+	catch (...)
+	{
+		Destroy(alloc, first, current);
+		throw;
+	}
 }
 
 template <typename Alloc, typename FwdIt>
 inline FwdIt UninitializedValueConstructN(Alloc& alloc, FwdIt first, SizeType<Alloc> count)
 {
-	DestroyGuard<Alloc, FwdIt> guard(alloc, first);
-	FwdIt cur = first;
-	for (SizeType<Alloc> i = 0; i < count; ++i, ++cur)
+	auto current = first;
+	try
 	{
-		AllocTraits<Alloc>::construct(alloc, std::to_address(cur), ValueType<Alloc>{});
-		guard.Advance();
+		for (SizeType<Alloc> i = 0; i < count; ++i, ++current)
+		{
+			ConstructAt(alloc, current, ValueType<Alloc>{});
+		}
+		return current;
 	}
-	guard.Release();
-	return cur;
+	catch (...)
+	{
+		Destroy(alloc, first, current);
+		throw;
+	}
 }
 
 template <typename Alloc, typename InIt, typename FwdIt>
@@ -360,11 +346,11 @@ inline FwdIt UninitializedMoveOrCopy(Alloc& alloc, InIt first, InIt last, FwdIt 
 	using T = std::iter_value_t<InIt>;
 	if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>)
 	{
-		return UninitializedMove<Alloc>(alloc, first, last, dest);
+		return UninitializedMove(alloc, first, last, dest);
 	}
 	else
 	{
-		return UninitializedCopy<Alloc>(alloc, first, last, dest);
+		return UninitializedCopy(alloc, first, last, dest);
 	}
 }
 
@@ -372,19 +358,13 @@ template <typename Alloc, typename InIt, typename FwdIt>
 inline FwdIt UninitializedMoveOrCopyN(Alloc& alloc, InIt first, SizeType<Alloc> count, FwdIt dest)
 {
 	using T = std::iter_value_t<InIt>;
-
-	if constexpr (std::is_trivially_copyable_v<T> && std::contiguous_iterator<InIt> && std::contiguous_iterator<FwdIt>)
+	if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>)
 	{
-		std::memmove(std::to_address(dest), std::to_address(first), static_cast<size_t>(count) * sizeof(T));
-		return std::next(dest, static_cast<ptrdiff_t>(count));
-	}
-	else if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>)
-	{
-		return UninitializedMoveN<Alloc>(alloc, first, count, dest);
+		return UninitializedMoveN(alloc, first, count, dest);
 	}
 	else
 	{
-		return UninitializedCopyN<Alloc>(alloc, first, count, dest);
+		return UninitializedCopyN(alloc, first, count, dest);
 	}
 }
 
@@ -436,14 +416,10 @@ template <typename Alloc>
 	SizeType<Alloc> capacity,
 	SizeType<Alloc> newCapacity)
 {
-	if (capacity == newCapacity)
-	{
-		return buffer;
-	}
 
 	if (newCapacity == 0)
 	{
-		if (std::to_address(buffer))
+		if (buffer)
 		{
 			DestroyN(alloc, buffer, count);
 			Deallocate(alloc, buffer, capacity);
@@ -451,19 +427,20 @@ template <typename Alloc>
 		return AllocPointer<Alloc>{};
 	}
 
+	if (capacity == newCapacity)
+	{
+		return buffer;
+	}
+
 	AllocPointer<Alloc> newBuffer = Allocate<Alloc>(alloc, newCapacity);
-	DestroyGuard<Alloc, AllocPointer<Alloc>> guard(alloc, newBuffer);
+	SizeType<Alloc> elementsToMove = std::min(count, newCapacity);
 
 	try
 	{
-		if (std::to_address(buffer) && count > 0)
+		if (buffer && elementsToMove > 0)
 		{
-			SizeType<Alloc> moveCount = std::min(count, newCapacity);
-			auto rawOld = std::to_address(buffer);
-			auto newEnd = UninitializedMoveOrCopyN<Alloc>(alloc, rawOld, moveCount, newBuffer);
-			guard.SetCurrent(newEnd);
+			UninitializedMoveOrCopyN(alloc, buffer, elementsToMove, newBuffer);
 		}
-		guard.Release();
 	}
 	catch (...)
 	{
@@ -471,9 +448,13 @@ template <typename Alloc>
 		throw;
 	}
 
-	if (std::to_address(buffer))
+	if (buffer)
 	{
-		DestroyN(alloc, buffer, count);
+		DestroyN(alloc, buffer, elementsToMove);
+		if (count > newCapacity)
+		{
+			DestroyN(alloc, buffer + elementsToMove, count - elementsToMove);
+		}
 		Deallocate(alloc, buffer, capacity);
 	}
 
@@ -489,59 +470,59 @@ template <typename Alloc>
 	SizeType<Alloc> capacity,
 	SizeType<Alloc> newCapacity)
 {
-	if (capacity == newCapacity)
-	{
-		return buffer;
-	}
 
 	if (newCapacity == 0)
 	{
-		if (std::to_address(buffer))
+		if (buffer)
 		{
-			DestroyCircular(alloc, std::to_address(buffer), capacity, start, count);
+			DestroyCircular(alloc, buffer, start, count, capacity);
 			Deallocate(alloc, buffer, capacity);
 		}
 		return AllocPointer<Alloc>{};
 	}
 
-	AllocPointer<Alloc> newBuffer = Allocate<Alloc>(alloc, newCapacity);
-	DestroyGuard<Alloc, AllocPointer<Alloc>> guard(alloc, newBuffer);
-
-	try
+	if (newCapacity == capacity)
 	{
-		if (std::to_address(buffer) && count > 0)
+		return buffer;
+	}
+
+	AllocPointer<Alloc> newBuffer = Allocate<Alloc>(alloc, newCapacity);
+	SizeType<Alloc> elementsToMove = std::min(count, newCapacity);
+
+	if (buffer && elementsToMove > 0)
+	{
+		try
 		{
-			assert(count <= capacity && "ReallocateCircular: count must not exceed capacity");
-
 			start %= capacity;
-			SizeType<Alloc> moveCount = std::min(count, newCapacity);
-			auto rawOld = std::to_address(buffer);
+			SizeType<Alloc> firstPart = std::min(elementsToMove, capacity - start);
+			SizeType<Alloc> secondPart = elementsToMove - firstPart;
+			AllocPointer<Alloc> cur = newBuffer;
 
-			SizeType<Alloc> firstPart = std::min(moveCount, capacity - start);
-			SizeType<Alloc> secondPart = moveCount - firstPart;
-
-			auto cur = newBuffer;
 			if (firstPart > 0)
 			{
-				cur = UninitializedMoveOrCopyN(alloc, rawOld + start, firstPart, cur);
+				cur = UninitializedMoveOrCopyN(alloc, buffer + start, firstPart, cur);
 			}
 			if (secondPart > 0)
 			{
-				cur = UninitializedMoveOrCopyN(alloc, rawOld, secondPart, cur);
+				UninitializedMoveOrCopyN(alloc, buffer, secondPart, cur);
 			}
-			guard.SetCurrent(cur);
 		}
-		guard.Release();
-	}
-	catch (...)
-	{
-		Deallocate(alloc, newBuffer, newCapacity);
-		throw;
+		catch (...)
+		{
+			Deallocate(alloc, newBuffer, newCapacity);
+			throw;
+		}
 	}
 
-	if (std::to_address(buffer))
+	if (buffer)
 	{
-		DestroyCircular(alloc, std::to_address(buffer), capacity, start, count);
+		DestroyCircular(alloc, buffer, start, elementsToMove, capacity);
+		if (count > newCapacity)
+		{
+			SizeType<Alloc> excessStart = (start + elementsToMove) % capacity;
+			SizeType<Alloc> excessCount = count - elementsToMove;
+			DestroyCircular(alloc, buffer, excessStart, excessCount, capacity);
+		}
 		Deallocate(alloc, buffer, capacity);
 	}
 
@@ -552,8 +533,30 @@ template <typename Alloc>
 
 inline size_t GrowCapacity(size_t current, size_t minRequired, double factor = 1.5, size_t initCap = 8)
 {
+	if (minRequired == 0)
+	{
+		return current;
+	}
+
+	if (current == 0)
+	{
+		return std::max(initCap, minRequired);
+	}
+
 	factor = std::max(factor, 1.0);
-	size_t candidate = current == 0 ? initCap : static_cast<size_t>(std::ceil(static_cast<double>(current) * factor));
+
+	constexpr size_t maxSize = std::numeric_limits<size_t>::max();
+	if (current > (maxSize - 1) / factor)
+	{
+		return maxSize;
+	}
+
+	size_t candidate = static_cast<size_t>(std::ceil(static_cast<double>(current) * factor));
+	if (candidate < current)
+	{
+		return maxSize;
+	}
+
 	return std::max(candidate, minRequired);
 }
 
