@@ -104,6 +104,8 @@ public:
 				mCount = other.mCount;
 				mCapacity = other.mCount;
 				mem::UninitializedMoveN(mAlloc, other.mData, other.mCount, mData);
+
+				other.Clear();
 			}
 		}
 	}
