@@ -377,7 +377,7 @@ public:
 
 		if (!ptr || count == 0)
 		{
-			return NPOS;
+			return index;
 		}
 
 		ensureCapacity(mCount + count);
@@ -385,24 +385,11 @@ public:
 		SizeType elementsToMove = mCount - index;
 		if (elementsToMove > 0)
 		{
-			if (elementsToMove > count)
-			{
-				mem::UninitializedMoveN(mAlloc, mData + mCount - count, count, mData + mCount);
-				mem::MoveBackward(mData + index, mData + mCount - count, mData + mCount);
-				mem::CopyN(ptr, count, mData + index);
-			}
-			else
-			{
-				mem::UninitializedMoveN(mAlloc, mData + index, elementsToMove, mData + index + count);
-				mem::CopyN(ptr, elementsToMove, mData + index);
-				mem::UninitializedCopyN(mAlloc, ptr + elementsToMove, count - elementsToMove, mData + mCount);
-			}
-		}
-		else
-		{
-			mem::UninitializedCopyN(mAlloc, ptr, count, mData + mCount);
+			mem::UninitializedMoveN(mAlloc, mData + index, elementsToMove, mData + index + count);
+			mem::DestroyN(mAlloc, mData + index, elementsToMove);
 		}
 
+		mem::UninitializedCopyN(mAlloc, ptr, count, mData + index);
 		mCount += count;
 
 		return index;
@@ -449,8 +436,13 @@ public:
 	void RemoveAt(SizeType index)
 	{
 		checkRange(index);
-		mem::Move(mData + index + 1, mData + mCount, mData + index);
-		mem::DestroyAt(mAlloc, mData + mCount - 1);
+
+		mem::DestroyAt(mAlloc, mData + index);
+		if (index < mCount - 1)
+		{
+			mem::Move(mData + index + 1, mData + mCount, mData + index);
+			mem::DestroyAt(mAlloc, mData + mCount - 1);
+		}
 		--mCount;
 	}
 
