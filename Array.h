@@ -70,10 +70,8 @@ public:
 	Array(const T* ptr, SizeType count, const Allocator& alloc = Allocator())
 		: Array(count, alloc)
 	{
-
 		mem::UninitializedCopyN(mAlloc, ptr, count, mData);
 		mCount = count;
-
 	}
 
 	Array(std::initializer_list<T> ilist, const Allocator& alloc = Allocator())
@@ -91,10 +89,8 @@ public:
 	Array(const Array& other, const Allocator& alloc)
 		: Array(other.mCount, alloc)
 	{
-
 		mem::UninitializedCopyN(mAlloc, other.mData, other.mCount, mData);
 		mCount = other.mCount;
-
 	}
 
 	Array(Array&& other) noexcept
@@ -295,10 +291,7 @@ public:
 		}
 
 		ensureCapacity(mCount + 1);
-
-		mem::ConstructAt(mAlloc, mData + mCount, std::move(mData[mCount - 1]));
-		mem::MoveBackward(mData + index, mData + mCount - 1, mData + mCount);
-		mem::DestroyAt(mAlloc, mData + index);
+		mem::MoveBackward(mData + index, mData + mCount, mData + mCount + 1);
 		mem::ConstructAt(mAlloc, mData + index, std::forward<Args>(args)...);
 		++mCount;
 
@@ -398,10 +391,8 @@ public:
 		SizeType elementsToMove = mCount - index;
 		if (elementsToMove > 0)
 		{
-			mem::UninitializedMoveN(mAlloc, mData + index, elementsToMove, mData + index + count);
-			mem::DestroyN(mAlloc, mData + index, elementsToMove);
+			mem::MoveBackward(mData + index, mData + mCount, mData + mCount + count);
 		}
-
 		mem::UninitializedCopyN(mAlloc, ptr, count, mData + index);
 		mCount += count;
 
@@ -454,7 +445,6 @@ public:
 		if (index < mCount - 1)
 		{
 			mem::Move(mData + index + 1, mData + mCount, mData + index);
-			mem::DestroyAt(mAlloc, mData + mCount - 1);
 		}
 		--mCount;
 	}
