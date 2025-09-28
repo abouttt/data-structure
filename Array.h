@@ -3,12 +3,17 @@
 #include <algorithm>
 #include <compare>
 #include <initializer_list>
+#include <iterator>
 #include <stdexcept>
+#include <utility>
 
 #include "MemoryUtil.h"
 
 namespace abouttt
 {
+
+template <typename ArrayType, bool IsConst>
+class ArrayIterator;
 
 template <typename T, typename Allocator = std::allocator<T>>
 class Array
@@ -25,6 +30,10 @@ public:
 	using ConstReference = const T&;
 	using Pointer = typename AllocTraits::pointer;
 	using ConstPointer = typename AllocTraits::const_pointer;
+	using Iterator = ArrayIterator<Array, false>;
+	using ConstIterator = ArrayIterator<Array, true>;
+	using ReverseIterator = std::reverse_iterator<Iterator>;
+	using ConstReverseIterator = std::reverse_iterator<ConstIterator>;
 
 public:
 	static constexpr SizeType NPOS = static_cast<SizeType>(-1);
@@ -61,8 +70,10 @@ public:
 	Array(const T* ptr, SizeType count, const Allocator& alloc = Allocator())
 		: Array(count, alloc)
 	{
+
 		mem::UninitializedCopyN(mAlloc, ptr, count, mData);
 		mCount = count;
+
 	}
 
 	Array(std::initializer_list<T> ilist, const Allocator& alloc = Allocator())
@@ -80,8 +91,10 @@ public:
 	Array(const Array& other, const Allocator& alloc)
 		: Array(other.mCount, alloc)
 	{
+
 		mem::UninitializedCopyN(mAlloc, other.mData, other.mCount, mData);
 		mCount = other.mCount;
+
 	}
 
 	Array(Array&& other) noexcept
@@ -186,17 +199,17 @@ public:
 		return mData[index];
 	}
 
-	bool operator==(const Array& other) const
-	{
-		return mCount == other.mCount && std::equal(mData, mData + mCount, other.mData);
-	}
-
 	auto operator<=>(const Array& other) const
 	{
 		return std::lexicographical_compare_three_way(
 			mData, mData + mCount,
 			other.mData, other.mData + other.mCount
 		);
+	}
+
+	bool operator==(const Array& other) const
+	{
+		return mCount == other.mCount && std::equal(mData, mData + mCount, other.mData);
 	}
 
 public:
@@ -514,6 +527,67 @@ public:
 		std::swap(mCapacity, other.mCapacity);
 	}
 
+public:
+	Iterator begin() noexcept
+	{
+		return Iterator(mData);
+	}
+
+	Iterator end() noexcept
+	{
+		return Iterator(mData + mCount);
+	}
+
+	ConstIterator begin() const noexcept
+	{
+		return ConstIterator(mData);
+	}
+
+	ConstIterator end() const noexcept
+	{
+		return ConstIterator(mData + mCount);
+	}
+
+	ConstIterator cbegin() const noexcept
+	{
+		return ConstIterator(mData);
+	}
+
+	ConstIterator cend() const noexcept
+	{
+		return ConstIterator(mData + mCount);
+	}
+
+	ReverseIterator rbegin() noexcept
+	{
+		return ReverseIterator(end());
+	}
+
+	ReverseIterator rend() noexcept
+	{
+		return ReverseIterator(begin());
+	}
+
+	ConstReverseIterator rbegin() const noexcept
+	{
+		return ConstReverseIterator(end());
+	}
+
+	ConstReverseIterator rend() const noexcept
+	{
+		return ConstReverseIterator(begin());
+	}
+
+	ConstReverseIterator crbegin() const noexcept
+	{
+		return ConstReverseIterator(end());
+	}
+
+	ConstReverseIterator crend() const noexcept
+	{
+		return ConstReverseIterator(begin());
+	}
+
 private:
 	void checkRange(SizeType index, bool bAllowEnd = false) const
 	{
@@ -606,6 +680,124 @@ private:
 	Pointer mData;
 	SizeType mCount;
 	SizeType mCapacity;
+};
+
+template <typename ArrayType, bool IsConst>
+class ArrayIterator
+{
+public:
+	using ValueType = typename ArrayType::ValueType;
+	using DifferenceType = typename ArrayType::DifferenceType;
+	using Pointer = std::conditional_t<IsConst, typename ArrayType::ConstPointer, typename ArrayType::Pointer>;
+	using Reference = std::conditional_t<IsConst, typename ArrayType::ConstReference, typename ArrayType::Reference>;
+
+public:
+	ArrayIterator() noexcept
+		: mPtr(nullptr)
+	{
+	}
+
+	explicit ArrayIterator(Pointer ptr) noexcept
+		: mPtr(ptr)
+	{
+	}
+
+	template <bool OtherConst, typename = std::enable_if_t<IsConst && !OtherConst>>
+	ArrayIterator(const ArrayIterator<ArrayType, OtherConst>& other) noexcept
+		: mPtr(other.base())
+	{
+	}
+
+public:
+	Reference operator*() const noexcept
+	{
+		return *mPtr;
+	}
+
+	Pointer operator->() const noexcept
+	{
+		return mPtr;
+	}
+
+	Reference operator[](DifferenceType n) const noexcept
+	{
+		return mPtr[n];
+	}
+
+	ArrayIterator& operator++() noexcept
+	{
+		++mPtr;
+		return *this;
+	}
+
+	ArrayIterator operator++(int) noexcept
+	{
+		ArrayIterator tmp = *this;
+		++mPtr;
+		return tmp;
+	}
+
+	ArrayIterator& operator--() noexcept
+	{
+		--mPtr;
+		return *this;
+	}
+
+	ArrayIterator operator--(int) noexcept
+	{
+		ArrayIterator tmp = *this;
+		--mPtr;
+		return tmp;
+	}
+
+	ArrayIterator& operator+=(DifferenceType n) noexcept
+	{
+		mPtr += n;
+		return *this;
+	}
+
+	ArrayIterator& operator-=(DifferenceType n) noexcept
+	{
+		mPtr -= n;
+		return *this;
+	}
+
+	ArrayIterator operator+(DifferenceType n) const noexcept
+	{
+		return ArrayIterator(mPtr + n);
+	}
+
+	ArrayIterator operator-(DifferenceType n) const noexcept
+	{
+		return ArrayIterator(mPtr - n);
+	}
+
+	DifferenceType operator-(const ArrayIterator& other) const noexcept
+	{
+		return mPtr - other.mPtr;
+	}
+
+	auto operator<=>(const ArrayIterator& other) const noexcept = default;
+
+	bool operator==(const ArrayIterator& other) const noexcept = default;
+
+	friend ArrayIterator operator+(DifferenceType n, const ArrayIterator& it) noexcept
+	{
+		return ArrayIterator(it.mPtr + n);
+	}
+
+	operator ArrayIterator<ArrayType, true>() const noexcept requires (!IsConst)
+	{
+		return ArrayIterator<ArrayType, true>(mPtr);
+	}
+
+	Pointer base() const noexcept
+	{
+		return mPtr;
+	}
+
+private:
+	Pointer mPtr;
 };
 
 } // namespace abouttt
