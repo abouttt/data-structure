@@ -738,9 +738,9 @@ public:
 		return tmp;
 	}
 
-	bool operator==(const LinkedListIterator& other) const noexcept = default;
-
 	auto operator<=>(const LinkedListIterator& other) const noexcept = default;
+
+	bool operator==(const LinkedListIterator& other) const noexcept = default;
 
 	operator LinkedListIterator<LinkedListType, true>() const noexcept requires (!IsConst)
 	{
