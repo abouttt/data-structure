@@ -12,6 +12,9 @@ namespace abouttt
 template <typename T>
 class LinkedListNode;
 
+template <typename T, bool IsConst>
+class LinkedListIterator;
+
 template <typename T, typename Allocator = std::allocator<T>>
 class LinkedList
 {
@@ -31,6 +34,10 @@ public:
 	using ConstReference = const T&;
 	using Pointer = typename AllocTraits::pointer;
 	using ConstPointer = typename AllocTraits::const_pointer;
+	using Iterator = LinkedListIterator<LinkedList, false>;
+	using ConstIterator = LinkedListIterator<LinkedList, true>;
+	using ReverseIterator = std::reverse_iterator<Iterator>;
+	using ConstReverseIterator = std::reverse_iterator<ConstIterator>;
 
 public:
 	LinkedList() noexcept(noexcept(Allocator()))
@@ -532,12 +539,73 @@ public:
 		std::swap(mCount, other.mCount);
 	}
 
+public:
+	Iterator begin() noexcept
+	{
+		return Iterator(mHead);
+	}
+
+	Iterator end() noexcept
+	{
+		return Iterator(nullptr);
+	}
+
+	ConstIterator begin() const noexcept
+	{
+		return ConstIterator(mHead);
+	}
+
+	ConstIterator end() const noexcept
+	{
+		return ConstIterator(nullptr);
+	}
+
+	ConstIterator cbegin() const noexcept
+	{
+		return ConstIterator(mHead);
+	}
+
+	ConstIterator cend() const noexcept
+	{
+		return ConstIterator(nullptr);
+	}
+
+	ReverseIterator rbegin() noexcept
+	{
+		return ReverseIterator(end());
+	}
+
+	ReverseIterator rend() noexcept
+	{
+		return ReverseIterator(begin());
+	}
+
+	ConstReverseIterator rbegin() const noexcept
+	{
+		return ConstReverseIterator(end());
+	}
+
+	ConstReverseIterator rend() const noexcept
+	{
+		return ConstReverseIterator(begin());
+	}
+
+	ConstReverseIterator crbegin() const noexcept
+	{
+		return ConstReverseIterator(cend());
+	}
+
+	ConstReverseIterator crend() const noexcept
+	{
+		return ConstReverseIterator(cbegin());
+	}
+
 private:
 	void exchangeFrom(LinkedList& other) noexcept
 	{
-		mHead = std::exchange(mHead, nullptr);
-		mTail = std::exchange(mTail, nullptr);
-		mCount = std::exchange(mCount, 0);
+		mHead = std::exchange(other.mHead, nullptr);
+		mTail = std::exchange(other.mTail, nullptr);
+		mCount = std::exchange(other.mCount, 0);
 	}
 
 private:
@@ -553,6 +621,9 @@ class LinkedListNode
 public:
 	template <typename U, typename Alloc>
 	friend class LinkedList;
+
+	template <typename LinkedListType, bool IsConst>
+	friend class LinkedListIterator;
 
 public:
 	template<typename... Args>
@@ -598,6 +669,96 @@ private:
 	T mValue;
 	LinkedListNode* mNext;
 	LinkedListNode* mPrev;
+};
+
+template <typename LinkedListType, bool IsConst>
+class LinkedListIterator
+{
+public:
+	using ValueType = typename LinkedListType::ValueType;
+	using DifferenceType = typename LinkedListType::DifferenceType;
+	using Pointer = std::conditional_t<IsConst, typename LinkedListType::ConstPointer, typename LinkedListType::Pointer>;
+	using Reference = std::conditional_t<IsConst, typename LinkedListType::ConstReference, typename LinkedListType::Reference>;
+
+private:
+	using Node = LinkedListNode<ValueType>;
+	using NodePointer = std::conditional_t<IsConst, const Node*, Node*>;
+
+public:
+	LinkedListIterator() noexcept
+		: mCurrent(nullptr)
+	{
+	}
+
+	explicit LinkedListIterator(NodePointer node) noexcept
+		: mCurrent(node)
+	{
+	}
+
+	template <bool OtherConst, typename = std::enable_if_t<IsConst && !OtherConst>>
+	LinkedListIterator(const LinkedListIterator<LinkedListType, OtherConst>& other) noexcept
+		: mCurrent(other.base())
+	{
+	}
+
+public:
+	Reference operator*() const noexcept
+	{
+		return mCurrent->mValue;
+	}
+
+	Pointer operator->() const noexcept
+	{
+		return &mCurrent->mValue;
+	}
+
+	LinkedListIterator& operator++() noexcept
+	{
+		mCurrent = mCurrent->mNext;
+		return *this;
+	}
+
+	LinkedListIterator operator++(int) noexcept
+	{
+		LinkedListIterator tmp = *this;
+		++(*this);
+		return tmp;
+	}
+
+	LinkedListIterator& operator--() noexcept
+	{
+		mCurrent = mCurrent->mPrev;
+		return *this;
+	}
+
+	LinkedListIterator operator--(int) noexcept
+	{
+		LinkedListIterator tmp = *this;
+		--(*this);
+		return tmp;
+	}
+
+	bool operator==(const LinkedListIterator& other) const noexcept = default;
+
+	auto operator<=>(const LinkedListIterator& other) const noexcept = default;
+
+	operator LinkedListIterator<LinkedListType, true>() const noexcept requires (!IsConst)
+	{
+		return LinkedListIterator<true>(mCurrent);
+	}
+
+	friend LinkedListIterator operator+(DifferenceType n, const LinkedListIterator& it) noexcept
+	{
+		return it;
+	}
+
+	NodePointer base() const noexcept
+	{
+		return mCurrent;
+	}
+
+private:
+	NodePointer mCurrent;
 };
 
 } // namespace abouttt
