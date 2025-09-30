@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <concepts>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -26,6 +27,12 @@ using ValueType = typename AllocTraits<Alloc>::value_type;
 template <typename Alloc>
 using SizeType = typename AllocTraits<Alloc>::size_type;
 
+// ---------- helpers ----------
+inline constexpr bool IsNullPtr(auto ptr) noexcept
+{
+	return std::to_address(ptr) == nullptr;
+}
+
 // --- allocation helpers ---
 
 template <typename Alloc>
@@ -37,7 +44,7 @@ template <typename Alloc>
 template <typename Alloc>
 inline void Deallocate(Alloc& alloc, AllocPointer<Alloc> ptr, SizeType<Alloc> count)
 {
-	if (std::to_address(ptr))
+	if (!IsNullPtr(ptr) && count > 0)
 	{
 		AllocTraits<Alloc>::deallocate(alloc, ptr, count);
 	}
@@ -46,29 +53,29 @@ inline void Deallocate(Alloc& alloc, AllocPointer<Alloc> ptr, SizeType<Alloc> co
 // --- construct/destroy helpers ---
 
 template <typename Alloc, typename Ptr, typename... Args>
-inline auto ConstructAt(Alloc& alloc, Ptr ptr, Args&&... args)
--> std::enable_if_t<std::is_convertible_v<Ptr, AllocPointer<Alloc>>, void>
+	requires std::convertible_to<Ptr, AllocPointer<Alloc>>
+inline void ConstructAt(Alloc& alloc, Ptr ptr, Args&&... args)
 {
 	AllocTraits<Alloc>::construct(alloc, static_cast<AllocPointer<Alloc>>(ptr), std::forward<Args>(args)...);
 }
 
-template <typename Alloc, typename Iter, typename... Args>
-inline auto ConstructAt(Alloc& alloc, Iter it, Args&&... args)
--> std::enable_if_t<!std::is_convertible_v<Iter, AllocPointer<Alloc>>, void>
+template <typename Alloc, typename It, typename... Args>
+	requires (!std::convertible_to<It, AllocPointer<Alloc>>)
+inline void ConstructAt(Alloc& alloc, It it, Args&&... args)
 {
 	AllocTraits<Alloc>::construct(alloc, std::addressof(*it), std::forward<Args>(args)...);
 }
 
 template <typename Alloc, typename Ptr>
-inline auto DestroyAt(Alloc& alloc, Ptr ptr)
--> std::enable_if_t<std::is_convertible_v<Ptr, AllocPointer<Alloc>>, void>
+	requires std::convertible_to<Ptr, AllocPointer<Alloc>>
+inline void DestroyAt(Alloc& alloc, Ptr ptr)
 {
 	AllocTraits<Alloc>::destroy(alloc, static_cast<AllocPointer<Alloc>>(ptr));
 }
 
-template <typename Alloc, typename Iter>
-inline auto DestroyAt(Alloc& alloc, Iter it)
--> std::enable_if_t<!std::is_convertible_v<Iter, AllocPointer<Alloc>>, void>
+template <typename Alloc, typename It>
+	requires (!std::convertible_to<It, AllocPointer<Alloc>>)
+inline void DestroyAt(Alloc& alloc, It it)
 {
 	AllocTraits<Alloc>::destroy(alloc, std::addressof(*it));
 }
@@ -116,17 +123,27 @@ inline BidIt DestroyBackwardN(Alloc& alloc, BidIt last, SizeType<Alloc> count)
 	return current;
 }
 
-template <typename Alloc, typename T>
-inline void DestroyCircular(Alloc& alloc, T* buffer, SizeType<Alloc> start, SizeType<Alloc> count, SizeType<Alloc> capacity)
+template <typename Alloc>
+inline void DestroyCircular(
+	Alloc& alloc,
+	AllocPointer<Alloc> buffer,
+	SizeType<Alloc> start,
+	SizeType<Alloc> count,
+	SizeType<Alloc> capacity)
 {
-	if (!buffer || capacity == 0 || count == 0)
+	if (IsNullPtr(buffer) || capacity == 0 || count == 0)
 	{
 		return;
 	}
 
-	start %= capacity;
-	SizeType<Alloc> end = start + count;
+	if (count > capacity)
+	{
+		count = capacity;
+	}
 
+	start %= capacity;
+
+	SizeType<Alloc> end = start + count;
 	if (end <= capacity)
 	{
 		DestroyN(alloc, buffer + start, count);
@@ -160,7 +177,7 @@ template <typename Alloc, typename... Args>
 template <typename Alloc>
 inline void Delete(Alloc& alloc, AllocPointer<Alloc> ptr)
 {
-	if (std::to_address(ptr))
+	if (!IsNullPtr(ptr))
 	{
 		DestroyAt(alloc, ptr);
 		Deallocate(alloc, ptr, 1);
@@ -434,7 +451,7 @@ template <typename Alloc>
 {
 	if (newCapacity == 0)
 	{
-		if (std::to_address(buffer))
+		if (!IsNullPtr(buffer))
 		{
 			DestroyN(alloc, buffer, count);
 			Deallocate(alloc, buffer, capacity);
@@ -449,33 +466,28 @@ template <typename Alloc>
 
 	AllocPointer<Alloc> newBuffer = Allocate<Alloc>(alloc, newCapacity);
 	SizeType<Alloc> elementsToMove = std::min(count, newCapacity);
-	SizeType<Alloc> moved = 0;
 
-	try
+	if (!IsNullPtr(buffer))
 	{
-		if (std::to_address(buffer) && elementsToMove > 0)
+		if (elementsToMove > 0)
 		{
-			auto cur = UninitializedMoveOrCopyN(alloc, buffer, elementsToMove, newBuffer);
-			moved = static_cast<SizeType<Alloc>>(std::to_address(cur) - std::to_address(newBuffer));
-		}
-	}
-	catch (...)
-	{
-		if (moved > 0)
-		{
-			DestroyN(alloc, newBuffer, moved);
-		}
-		Deallocate(alloc, newBuffer, newCapacity);
-		throw;
-	}
+			try
+			{
+				UninitializedMoveOrCopyN(alloc, buffer, elementsToMove, newBuffer);
+			}
+			catch (...)
+			{
+				Deallocate(alloc, newBuffer, newCapacity);
+				throw;
+			}
 
-	if (std::to_address(buffer))
-	{
-		DestroyN(alloc, buffer, elementsToMove);
-		if (count > newCapacity)
-		{
-			DestroyN(alloc, buffer + elementsToMove, count - elementsToMove);
+			DestroyN(alloc, buffer, elementsToMove);
+			if (count > newCapacity)
+			{
+				DestroyN(alloc, buffer + elementsToMove, count - elementsToMove);
+			}
 		}
+
 		Deallocate(alloc, buffer, capacity);
 	}
 
@@ -493,7 +505,7 @@ template <typename Alloc>
 {
 	if (newCapacity == 0)
 	{
-		if (std::to_address(buffer))
+		if (!IsNullPtr(buffer))
 		{
 			DestroyCircular(alloc, buffer, start, count, capacity);
 			Deallocate(alloc, buffer, capacity);
@@ -508,50 +520,43 @@ template <typename Alloc>
 
 	AllocPointer<Alloc> newBuffer = Allocate<Alloc>(alloc, newCapacity);
 	SizeType<Alloc> elementsToMove = std::min(count, newCapacity);
-	SizeType<Alloc> moved = 0;
 
-	if (std::to_address(buffer) && elementsToMove > 0)
+	if (!IsNullPtr(buffer))
 	{
-		try
+		if (elementsToMove > 0)
 		{
 			start %= capacity;
 			SizeType<Alloc> firstPart = std::min(elementsToMove, capacity - start);
 			SizeType<Alloc> secondPart = elementsToMove - firstPart;
 
-			auto cur = newBuffer;
-			if (firstPart > 0)
+			try
 			{
-				auto next = UninitializedMoveOrCopyN(alloc, buffer + start, firstPart, cur);
-				moved += static_cast<SizeType<Alloc>>(std::to_address(next) - std::to_address(cur));
-				cur = next;
+				auto dest = newBuffer;
+				if (firstPart > 0)
+				{
+					dest = UninitializedMoveOrCopyN(alloc, buffer + start, firstPart, dest);
+				}
+				if (secondPart > 0)
+				{
+					UninitializedMoveOrCopyN(alloc, buffer, secondPart, dest);
+				}
 			}
-			if (secondPart > 0)
+			catch (...)
 			{
-				auto next = UninitializedMoveOrCopyN(alloc, buffer, secondPart, cur);
-				moved += static_cast<SizeType<Alloc>>(std::to_address(next) - std::to_address(cur));
-				cur = next;
+				DestroyN(alloc, newBuffer, elementsToMove);
+				Deallocate(alloc, newBuffer, newCapacity);
+				throw;
 			}
-		}
-		catch (...)
-		{
-			if (moved > 0)
-			{
-				DestroyN(alloc, newBuffer, moved);
-			}
-			Deallocate(alloc, newBuffer, newCapacity);
-			throw;
-		}
-	}
 
-	if (std::to_address(buffer))
-	{
-		DestroyCircular(alloc, buffer, start, elementsToMove, capacity);
-		if (count > newCapacity)
-		{
-			SizeType<Alloc> excessStart = (start + elementsToMove) % capacity;
-			SizeType<Alloc> excessCount = count - elementsToMove;
-			DestroyCircular(alloc, buffer, excessStart, excessCount, capacity);
+			DestroyCircular(alloc, buffer, start, elementsToMove, capacity);
+			if (count > newCapacity)
+			{
+				SizeType<Alloc> excessStart = (start + elementsToMove) % capacity;
+				SizeType<Alloc> excessCount = count - elementsToMove;
+				DestroyCircular(alloc, buffer, excessStart, excessCount, capacity);
+			}
 		}
+
 		Deallocate(alloc, buffer, capacity);
 	}
 
@@ -575,7 +580,7 @@ inline size_t GrowCapacity(size_t current, size_t minRequired, double factor = 1
 	factor = std::max(factor, 1.0);
 
 	constexpr size_t maxSize = std::numeric_limits<size_t>::max();
-	if (current > (maxSize - 1) / factor)
+	if (current > static_cast<size_t>(std::floor(static_cast<long double>(maxSize) / factor)))
 	{
 		return maxSize;
 	}
