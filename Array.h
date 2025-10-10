@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <compare>
 #include <initializer_list>
+#include <iterator>
 #include <memory>
 #include <new>
 #include <stdexcept>
@@ -54,9 +55,6 @@ public:
 	~Array()
 	{
 		clearAndDeallocate();
-		mData = nullptr;
-		mCount = 0;
-		mCapacity = 0;
 	}
 
 public:
@@ -326,7 +324,10 @@ public:
 	void RemoveAt(size_t index)
 	{
 		checkRange(index);
-		std::move(mData + index + 1, mData + mCount, mData + index);
+		if (index < mCount - 1)
+		{
+			std::move(mData + index + 1, mData + mCount, mData + index);
+		}
 		std::destroy_at(mData + mCount - 1);
 		--mCount;
 	}
@@ -385,6 +386,16 @@ public:
 		std::swap(mCapacity, other.mCapacity);
 	}
 
+public: // Iterators for range-based for loops.
+	T* begin() noexcept { return mData; }
+	const T* begin() const noexcept { return mData; }
+	T* end() noexcept { return mData + mCount; }
+	const T* end() const noexcept { return mData + mCount; }
+	std::reverse_iterator<T*> rbegin() noexcept { return std::reverse_iterator<T*>(end()); }
+	std::reverse_iterator<const T*> rbegin() const noexcept { return std::reverse_iterator<const T*>(end()); }
+	std::reverse_iterator<T*> rend() noexcept { return std::reverse_iterator<T*>(begin()); }
+	std::reverse_iterator<const T*> rend() const noexcept { return std::reverse_iterator<const T*>(begin()); }
+
 private:
 	void checkRange(size_t index, bool bAllowEnd = false) const
 	{
@@ -436,6 +447,13 @@ private:
 
 	void reallocate(size_t newCapacity)
 	{
+		if (newCapacity == 0)
+		{
+			clearAndDeallocate();
+			mCapacity = 0;
+			return;
+		}
+
 		T* newData = static_cast<T*>(::operator new(sizeof(T) * newCapacity));
 		size_t newSize = std::min(mCount, newCapacity);
 
@@ -465,6 +483,7 @@ private:
 		{
 			std::destroy_n(mData, mCount);
 			::operator delete(mData);
+			mData = nullptr;
 		}
 	}
 
