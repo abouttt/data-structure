@@ -72,8 +72,10 @@ public:
 	{
 		if (this != &other)
 		{
-			Array temp(std::move(other));
-			Swap(temp);
+			clearAndDeallocate();
+			mData = std::exchange(other.mData, nullptr);
+			mCount = std::exchange(other.mCount, 0);
+			mCapacity = std::exchange(other.mCapacity, 0);
 		}
 		return *this;
 	}
@@ -99,7 +101,10 @@ public:
 
 	auto operator<=>(const Array& other) const
 	{
-		return std::lexicographical_compare_three_way(mData, mData + mCount, other.mData, other.mData + other.mCount);
+		return std::lexicographical_compare_three_way(
+			mData, mData + mCount,
+			other.mData, other.mData + other.mCount
+		);
 	}
 
 	bool operator==(const Array& other) const
@@ -120,22 +125,23 @@ public:
 
 	void Append(const Array& source)
 	{
-		Insert(mCount, source);
+		insertImpl(mCount, source.mData, source.mCount, false);
 	}
 
 	void Append(Array&& source)
 	{
-		Insert(mCount, std::move(source));
+		insertImpl(mCount, source.mData, source.mCount, true);
+		source.Clear();
 	}
 
 	void Append(std::initializer_list<T> ilist)
 	{
-		Insert(mCount, ilist);
+		insertImpl(mCount, ilist.begin(), ilist.size(), false);
 	}
 
 	void Append(const T* ptr, size_t count)
 	{
-		Insert(mCount, ptr, count);
+		insertImpl(mCount, ptr, count, false);
 	}
 
 	size_t Capacity() const noexcept
@@ -206,29 +212,15 @@ public:
 
 	size_t Find(const T& value) const
 	{
-		for (size_t i = 0; i < mCount; ++i)
-		{
-			if (mData[i] == value)
-			{
-				return i;
-			}
-		}
-
-		return INDEX_NONE;
+		const T* it = std::find(mData, mData + mCount, value);
+		return it != mData + mCount ? static_cast<size_t>(it - mData) : INDEX_NONE;
 	}
 
 	template <typename Predicate>
 	size_t FindIf(Predicate pred) const
 	{
-		for (size_t i = 0; i < mCount; ++i)
-		{
-			if (pred(mData[i]))
-			{
-				return i;
-			}
-		}
-
-		return INDEX_NONE;
+		const T* it = std::find_if(mData, mData + mCount, pred);
+		return it != mData + mCount ? static_cast<size_t>(it - mData) : INDEX_NONE;
 	}
 
 	size_t FindLast(const T& value) const
@@ -240,7 +232,6 @@ public:
 				return i;
 			}
 		}
-
 		return INDEX_NONE;
 	}
 
@@ -254,7 +245,6 @@ public:
 				return i;
 			}
 		}
-
 		return INDEX_NONE;
 	}
 
@@ -303,7 +293,6 @@ public:
 			RemoveAt(index);
 			return true;
 		}
-
 		return false;
 	}
 
@@ -311,24 +300,20 @@ public:
 	size_t RemoveAll(Predicate pred)
 	{
 		T* newEnd = std::remove_if(mData, mData + mCount, pred);
-		size_t removedCount = (mData + mCount) - newEnd;
-		if (removedCount > 0)
-		{
-			std::destroy_n(newEnd, removedCount);
-			mCount -= removedCount;
-		}
-
+		size_t removedCount = static_cast<size_t>(mData + mCount - newEnd);
+		std::destroy(newEnd, mData + mCount);
+		mCount -= removedCount;
 		return removedCount;
 	}
 
 	void RemoveAt(size_t index)
 	{
 		checkRange(index);
+		std::destroy_at(mData + index);
 		if (index < mCount - 1)
 		{
 			std::move(mData + index + 1, mData + mCount, mData + index);
 		}
-		std::destroy_at(mData + mCount - 1);
 		--mCount;
 	}
 
@@ -356,21 +341,15 @@ public:
 		{
 			std::destroy_n(mData + newSize, mCount - newSize);
 		}
-
 		mCount = newSize;
 	}
 
-	void ShrinkToFit()
+	void Shrink()
 	{
 		if (mCapacity > mCount)
 		{
 			reallocate(mCount);
 		}
-	}
-
-	void Sort()
-	{
-		Sort(std::less<T>());
 	}
 
 	template <typename Compare>
@@ -386,7 +365,7 @@ public:
 		std::swap(mCapacity, other.mCapacity);
 	}
 
-public: // Iterators for range-based for loops.
+public: // Iterators for range-based loop support.
 	T* begin() noexcept { return mData; }
 	const T* begin() const noexcept { return mData; }
 	T* end() noexcept { return mData + mCount; }
@@ -399,7 +378,7 @@ public: // Iterators for range-based for loops.
 private:
 	void checkRange(size_t index, bool bAllowEnd = false) const
 	{
-		if ((bAllowEnd && index > mCount) || (!bAllowEnd && index >= mCount))
+		if (index >= mCount + (bAllowEnd ? 1 : 0))
 		{
 			throw std::out_of_range("Array index out of range");
 		}
@@ -409,12 +388,13 @@ private:
 	{
 		if (min > mCapacity)
 		{
-			size_t newCapacity = std::max(min, mCapacity == 0 ? 8 : mCapacity * 2);
+			size_t grow = mCapacity + (mCapacity >> 1); // Grow by 1.5x
+			size_t newCapacity = std::max(min, mCapacity == 0 ? 8 : grow);
 			reallocate(newCapacity);
 		}
 	}
 
-	size_t insertImpl(size_t index, const T* ptr, size_t count, bool moveElements)
+	size_t insertImpl(size_t index, const T* ptr, size_t count, bool bMoveElements)
 	{
 		checkRange(index, true);
 
@@ -425,13 +405,13 @@ private:
 
 		ensureCapacity(mCount + count);
 
-		size_t elemsToMove = mCount - index;
-		if (elemsToMove > 0)
+		if (index < mCount)
 		{
-			std::move_backward(mData + index, mData + mCount, mData + mCount + count);
+			std::uninitialized_move(mData + index, mData + mCount, mData + index + count);
+			std::destroy_n(mData + index, mCount - index);
 		}
 
-		if (moveElements)
+		if (bMoveElements)
 		{
 			std::uninitialized_move_n(ptr, count, mData + index);
 		}
@@ -447,22 +427,23 @@ private:
 
 	void reallocate(size_t newCapacity)
 	{
+		if (newCapacity == mCapacity)
+		{
+			return;
+		}
+
 		if (newCapacity == 0)
 		{
 			clearAndDeallocate();
-			mCapacity = 0;
 			return;
 		}
 
 		T* newData = static_cast<T*>(::operator new(sizeof(T) * newCapacity));
-		size_t newSize = std::min(mCount, newCapacity);
+		size_t newCount = std::min(mCount, newCapacity);
 
 		try
 		{
-			if (mCount > 0)
-			{
-				std::uninitialized_move_n(mData, newSize, newData);
-			}
+			std::uninitialized_move_n(mData, newCount, newData);
 		}
 		catch (...)
 		{
@@ -471,9 +452,8 @@ private:
 		}
 
 		clearAndDeallocate();
-
 		mData = newData;
-		mCount = newSize;
+		mCount = newCount;
 		mCapacity = newCapacity;
 	}
 
@@ -484,6 +464,8 @@ private:
 			std::destroy_n(mData, mCount);
 			::operator delete(mData);
 			mData = nullptr;
+			mCount = 0;
+			mCapacity = 0;
 		}
 	}
 
