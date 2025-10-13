@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <compare>
 #include <initializer_list>
+#include <iterator>
 #include <memory>
 #include <new>
 #include <stdexcept>
@@ -363,6 +364,16 @@ public:
 		std::swap(mCount, other.mCount);
 		std::swap(mCapacity, other.mCapacity);
 	}
+
+public: // Iterators for range-based loop support.
+	T* begin() noexcept { return mData; }
+	const T* begin() const noexcept { return mData; }
+	T* end() noexcept { return mData + mCount; }
+	const T* end() const noexcept { return mData + mCount; }
+	std::reverse_iterator<T*> rbegin() noexcept { return std::reverse_iterator<T*>(end()); }
+	std::reverse_iterator<const T*> rbegin() const noexcept { return std::reverse_iterator<const T*>(end()); }
+	std::reverse_iterator<T*> rend() noexcept { return std::reverse_iterator<T*>(begin()); }
+	std::reverse_iterator<const T*> rend() const noexcept { return std::reverse_iterator<const T*>(begin()); }
 
 private:
 	void checkRange(size_t index, bool bAllowEnd = false) const
