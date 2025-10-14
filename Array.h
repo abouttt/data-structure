@@ -462,10 +462,9 @@ private:
 	{
 		if (mData)
 		{
-			std::destroy_n(mData, mCount);
+			Clear();
 			::operator delete(mData);
 			mData = nullptr;
-			mCount = 0;
 			mCapacity = 0;
 		}
 	}

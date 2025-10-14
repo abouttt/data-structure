@@ -29,7 +29,7 @@ public:
 	}
 
 	Queue(std::initializer_list<T> ilist)
-		: mData(static_cast<T*>(::operator new(sizeof(T)* ilist.size())))
+		: mData(static_cast<T*>(::operator new(sizeof(T) * ilist.size())))
 		, mFront(0)
 		, mRear(ilist.size() % ilist.size())
 		, mCount(ilist.size())
@@ -39,7 +39,7 @@ public:
 	}
 
 	Queue(const Queue& other)
-		: mData(static_cast<T*>(::operator new(sizeof(T)* other.mCount)))
+		: mData(static_cast<T*>(::operator new(sizeof(T) * other.mCount)))
 		, mFront(0)
 		, mRear(other.mCount % (other.mCount == 0 ? 1 : other.mCount))
 		, mCount(other.mCount)
@@ -319,6 +319,7 @@ private:
 			Clear();
 			::operator delete(mData);
 			mData = nullptr;
+			mCapacity = 0;
 		}
 	}
 
