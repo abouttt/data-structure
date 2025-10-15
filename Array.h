@@ -4,6 +4,7 @@
 #include <compare>
 #include <initializer_list>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <new>
 #include <stdexcept>
@@ -16,7 +17,7 @@ template <typename T>
 class Array
 {
 public:
-	static constexpr size_t INDEX_NONE = static_cast<size_t>(-1);
+	static constexpr size_t INDEX_NONE = std::numeric_limits<size_t>::max();
 
 public:
 	Array() noexcept
@@ -54,7 +55,7 @@ public:
 
 	~Array()
 	{
-		clearAndDeallocate();
+		cleanup();
 	}
 
 public:
@@ -72,7 +73,7 @@ public:
 	{
 		if (this != &other)
 		{
-			clearAndDeallocate();
+			cleanup();
 			mData = std::exchange(other.mData, nullptr);
 			mCount = std::exchange(other.mCount, 0);
 			mCapacity = std::exchange(other.mCapacity, 0);
@@ -125,23 +126,22 @@ public:
 
 	void Append(const Array& source)
 	{
-		insertImpl(mCount, source.mData, source.mCount, false);
+		Insert(mCount, source);
 	}
 
 	void Append(Array&& source)
 	{
-		insertImpl(mCount, source.mData, source.mCount, true);
-		source.Clear();
+		Insert(mCount, std::move(source));
 	}
 
 	void Append(std::initializer_list<T> ilist)
 	{
-		insertImpl(mCount, ilist.begin(), ilist.size(), false);
+		Insert(mCount, ilist);
 	}
 
 	void Append(const T* ptr, size_t count)
 	{
-		insertImpl(mCount, ptr, count, false);
+		Insert(mCount, ptr, count);
 	}
 
 	size_t Capacity() const noexcept
@@ -184,26 +184,21 @@ public:
 	template <typename... Args>
 	T& Emplace(Args&&... args)
 	{
-		ensureCapacity(mCount + 1);
-		T* newElement = std::construct_at(mData + mCount, std::forward<Args>(args)...);
-		++mCount;
-		return *newElement;
+		size_t index = EmplaceAt(mCount, std::forward<Args>(args)...);
+		return mData[index];
 	}
 
 	template <typename... Args>
 	size_t EmplaceAt(size_t index, Args&&... args)
 	{
 		checkRange(index, true);
-
-		if (index == mCount)
-		{
-			Emplace(std::forward<Args>(args)...);
-			return index;
-		}
-
 		ensureCapacity(mCount + 1);
 
-		std::move_backward(mData + index, mData + mCount, mData + mCount + 1);
+		if (index < mCount)
+		{
+			std::uninitialized_move_n(mData + mCount - 1, 1, mData + mCount);
+			std::move_backward(mData + index, mData + mCount - 1, mData + mCount);
+		}
 		std::construct_at(mData + index, std::forward<Args>(args)...);
 		++mCount;
 
@@ -260,24 +255,24 @@ public:
 
 	size_t Insert(size_t index, const Array& source)
 	{
-		return insertImpl(index, source.mData, source.mCount, false);
+		return insertImpl(index, source.mData, source.mCount);
 	}
 
 	size_t Insert(size_t index, Array&& source)
 	{
-		size_t result = insertImpl(index, source.mData, source.mCount, true);
+		size_t result = insertImpl(index, source.mData, source.mCount);
 		source.Clear();
 		return result;
 	}
 
 	size_t Insert(size_t index, std::initializer_list<T> ilist)
 	{
-		return insertImpl(index, ilist.begin(), ilist.size(), false);
+		return insertImpl(index, ilist.begin(), ilist.size());
 	}
 
 	size_t Insert(size_t index, const T* ptr, size_t count)
 	{
-		return insertImpl(index, ptr, count, false);
+		return insertImpl(index, ptr, count);
 	}
 
 	bool IsEmpty() const noexcept
@@ -300,7 +295,11 @@ public:
 	size_t RemoveAll(Predicate pred)
 	{
 		T* newEnd = std::remove_if(mData, mData + mCount, pred);
-		size_t removedCount = static_cast<size_t>(mData + mCount - newEnd);
+		if (newEnd == mData + mCount)
+		{
+			return 0;
+		}
+		size_t removedCount = static_cast<size_t>((mData + mCount) - newEnd);
 		std::destroy(newEnd, mData + mCount);
 		mCount -= removedCount;
 		return removedCount;
@@ -394,7 +393,7 @@ private:
 		}
 	}
 
-	size_t insertImpl(size_t index, const T* ptr, size_t count, bool bMoveElements)
+	size_t insertImpl(size_t index, const T* ptr, size_t count)
 	{
 		checkRange(index, true);
 
@@ -407,19 +406,10 @@ private:
 
 		if (index < mCount)
 		{
-			std::uninitialized_move(mData + index, mData + mCount, mData + index + count);
-			std::destroy_n(mData + index, mCount - index);
+			std::uninitialized_move_n(mData + mCount - count, count, mData + mCount);
+			std::move_backward(mData + index, mData + mCount - count, mData + mCount);
 		}
-
-		if (bMoveElements)
-		{
-			std::uninitialized_move_n(ptr, count, mData + index);
-		}
-		else
-		{
-			std::uninitialized_copy_n(ptr, count, mData + index);
-		}
-
+		std::uninitialized_copy_n(ptr, count, mData + index);
 		mCount += count;
 
 		return index;
@@ -434,37 +424,33 @@ private:
 
 		if (newCapacity == 0)
 		{
-			clearAndDeallocate();
+			cleanup();
 			return;
 		}
 
 		T* newData = static_cast<T*>(::operator new(sizeof(T) * newCapacity));
 		size_t newCount = std::min(mCount, newCapacity);
 
-		try
+		if (mData)
 		{
 			std::uninitialized_move_n(mData, newCount, newData);
+			std::destroy_n(mData, mCount);
+			::operator delete(mData);
 		}
-		catch (...)
-		{
-			::operator delete(newData);
-			throw;
-		}
-
-		clearAndDeallocate();
 
 		mData = newData;
 		mCount = newCount;
 		mCapacity = newCapacity;
 	}
 
-	void clearAndDeallocate() noexcept
+	void cleanup() noexcept
 	{
 		if (mData)
 		{
-			Clear();
+			std::destroy_n(mData, mCount);
 			::operator delete(mData);
 			mData = nullptr;
+			mCount = 0;
 			mCapacity = 0;
 		}
 	}
