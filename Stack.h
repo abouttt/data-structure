@@ -50,7 +50,7 @@ public:
 
 	~Stack()
 	{
-		clearAndDeallocate();
+		cleanup();
 	}
 
 public:
@@ -68,7 +68,7 @@ public:
 	{
 		if (this != &other)
 		{
-			clearAndDeallocate();
+			cleanup();
 			mData = std::exchange(other.mData, nullptr);
 			mCount = std::exchange(other.mCount, 0);
 			mCapacity = std::exchange(other.mCapacity, 0);
@@ -105,7 +105,14 @@ public:
 
 	bool Contains(const T& value) const
 	{
-		return std::find(mData, mData + mCount, value) != (mData + mCount);
+		for (size_t i = 0; i < mCount; ++i)
+		{
+			if (mData[i] == value)
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	size_t Count() const noexcept
@@ -206,37 +213,33 @@ private:
 
 		if (newCapacity == 0)
 		{
-			clearAndDeallocate();
+			cleanup();
 			return;
 		}
 
 		T* newData = static_cast<T*>(::operator new(sizeof(T) * newCapacity));
 		size_t newCount = std::min(mCount, newCapacity);
 
-		try
+		if (mData)
 		{
 			std::uninitialized_move_n(mData, newCount, newData);
+			std::destroy_n(mData, mCount);
+			::operator delete(mData);
 		}
-		catch (...)
-		{
-			::operator delete(newData);
-			throw;
-		}
-
-		clearAndDeallocate();
 
 		mData = newData;
 		mCount = newCount;
 		mCapacity = newCapacity;
 	}
 
-	void clearAndDeallocate() noexcept
+	void cleanup() noexcept
 	{
 		if (mData)
 		{
-			Clear();
+			std::destroy_n(mData, mCount);
 			::operator delete(mData);
 			mData = nullptr;
+			mCount = 0;
 			mCapacity = 0;
 		}
 	}
