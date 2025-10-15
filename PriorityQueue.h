@@ -20,7 +20,7 @@ public:
 	{
 	}
 
-	explicit PriorityQueue(const Compare& comp)
+	explicit PriorityQueue(const Compare& comp) noexcept
 		: PriorityQueue(0, comp)
 	{
 	}
@@ -44,22 +44,18 @@ public:
 	}
 
 	PriorityQueue(std::initializer_list<T> ilist, const Compare& comp)
-		: mCompare(comp)
-		, mData(static_cast<T*>(::operator new(sizeof(T) * ilist.size())))
-		, mCount(ilist.size())
-		, mCapacity(ilist.size())
+		: PriorityQueue(ilist.size(), comp)
 	{
 		std::uninitialized_copy(ilist.begin(), ilist.end(), mData);
+		mCount = ilist.size();
 		makeHeap();
 	}
 
 	PriorityQueue(const PriorityQueue& other)
-		: mCompare(other.mCompare)
-		, mData(static_cast<T*>(::operator new(sizeof(T) * other.mCount)))
-		, mCount(other.mCount)
-		, mCapacity(other.mCount)
+		: PriorityQueue(other.mCount, other.mCompare)
 	{
 		std::uninitialized_copy(other.mData, other.mData + other.mCount, mData);
+		mCount = other.mCount;
 		makeHeap();
 	}
 
@@ -73,7 +69,7 @@ public:
 
 	~PriorityQueue()
 	{
-		clearAndDeallocate();
+		cleanup();
 	}
 
 public:
@@ -91,7 +87,7 @@ public:
 	{
 		if (this != &other)
 		{
-			clearAndDeallocate();
+			cleanup();
 			mCompare = std::move(other.mCompare);
 			mData = std::exchange(other.mData, nullptr);
 			mCount = std::exchange(other.mCount, 0);
@@ -136,8 +132,8 @@ public:
 	{
 		ensureCapacity(mCount + 1);
 		std::construct_at(mData + mCount, std::forward<Args>(args)...);
+		heapifyUp(mCount);
 		++mCount;
-		heapifyUp(mCount - 1);
 	}
 
 	void Enqueue(const T& value)
@@ -206,44 +202,44 @@ private:
 
 	void heapifyUp(size_t index)
 	{
+		T value = std::move(mData[index]);
+
 		while (index > 0)
 		{
 			size_t parent = (index - 1) / 2;
-			if (!mCompare(mData[parent], mData[index]))
+			if (!mCompare(mData[parent], value))
 			{
 				break;
 			}
-			std::swap(mData[index], mData[parent]);
+			mData[index] = std::move(mData[parent]);
 			index = parent;
 		}
+
+		mData[index] = std::move(value);
 	}
 
 	void heapifyDown(size_t index)
 	{
-		while (true)
+		T temp = std::move(mData[index]);
+		size_t child;
+
+		while ((child = index * 2 + 1) < mCount)
 		{
-			size_t left = index * 2 + 1;
-			size_t right = index * 2 + 2;
-			size_t largest = index;
-
-			if (left < mCount && mCompare(mData[largest], mData[left]))
+			if (child + 1 < mCount && mCompare(mData[child], mData[child + 1]))
 			{
-				largest = left;
+				++child;
 			}
 
-			if (right < mCount && mCompare(mData[largest], mData[right]))
-			{
-				largest = right;
-			}
-
-			if (largest == index)
+			if (!mCompare(temp, mData[child]))
 			{
 				break;
 			}
 
-			std::swap(mData[index], mData[largest]);
-			index = largest;
+			mData[index] = std::move(mData[child]);
+			index = child;
 		}
+
+		mData[index] = std::move(temp);
 	}
 
 	void makeHeap()
@@ -253,7 +249,7 @@ private:
 			return;
 		}
 
-		for (size_t i = (mCount / 2); i-- > 0;)
+		for (size_t i = mCount / 2; i-- > 0;)
 		{
 			heapifyDown(i);
 		}
@@ -268,37 +264,26 @@ private:
 
 		if (newCapacity == 0)
 		{
-			clearAndDeallocate();
+			cleanup();
 			return;
 		}
 
 		T* newData = static_cast<T*>(::operator new(sizeof(T) * newCapacity));
 		size_t newCount = std::min(mCount, newCapacity);
 
-		try
+		if (mData)
 		{
 			std::uninitialized_move_n(mData, newCount, newData);
+			std::destroy_n(mData, mCount);
+			::operator delete(mData);
 		}
-		catch (...)
-		{
-			::operator delete(newData);
-			throw;
-		}
-
-		std::destroy_n(mData, mCount);
-		::operator delete(mData);
 
 		mData = newData;
 		mCount = newCount;
 		mCapacity = newCapacity;
-
-		if (newCount > 1)
-		{
-			makeHeap();
-		}
 	}
 
-	void clearAndDeallocate() noexcept
+	void cleanup() noexcept
 	{
 		if (mData)
 		{
