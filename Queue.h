@@ -29,26 +29,19 @@ public:
 	}
 
 	Queue(std::initializer_list<T> ilist)
-		: mData(static_cast<T*>(::operator new(sizeof(T) * ilist.size())))
-		, mFront(0)
-		, mRear(ilist.size() % ilist.size())
-		, mCount(ilist.size())
-		, mCapacity(ilist.size())
+		: Queue(ilist.size())
 	{
 		std::uninitialized_copy(ilist.begin(), ilist.end(), mData);
+		mCount = ilist.size();
+		mRear = (mCount == mCapacity) ? 0 : mCount;
 	}
 
 	Queue(const Queue& other)
-		: mData(static_cast<T*>(::operator new(sizeof(T) * other.mCount)))
-		, mFront(0)
-		, mRear(other.mCount % (other.mCount == 0 ? 1 : other.mCount))
-		, mCount(other.mCount)
-		, mCapacity(other.mCount)
+		: Queue(other.mCount)
 	{
-		for (size_t i = 0; i < other.mCount; ++i)
-		{
-			std::construct_at(mData + i, other.mData[(other.mFront + i) % other.mCapacity]);
-		}
+		copyCircular(other, mData);
+		mCount = other.mCount;
+		mRear = (mCount == mCapacity) ? 0 : mCount;
 	}
 
 	Queue(Queue&& other) noexcept
@@ -62,7 +55,7 @@ public:
 
 	~Queue()
 	{
-		clearAndDeallocate();
+		cleanup();
 	}
 
 public:
@@ -80,7 +73,7 @@ public:
 	{
 		if (this != &other)
 		{
-			clearAndDeallocate();
+			cleanup();
 			mData = std::exchange(other.mData, nullptr);
 			mFront = std::exchange(other.mFront, 0);
 			mRear = std::exchange(other.mRear, 0);
@@ -138,21 +131,10 @@ public:
 public:
 	void Clear() noexcept
 	{
-		if (mData)
-		{
-			if (mFront < mRear)
-			{
-				std::destroy_n(mData + mFront, mCount);
-			}
-			else
-			{
-				std::destroy_n(mData + mFront, mCapacity - mFront);
-				std::destroy_n(mData, mRear);
-			}
-			mFront = 0;
-			mRear = 0;
-			mCount = 0;
-		}
+		destroyCircular();
+		mFront = 0;
+		mRear = 0;
+		mCount = 0;
 	}
 
 	bool Contains(const T& value) const
@@ -269,56 +251,101 @@ private:
 
 		if (newCapacity == 0)
 		{
-			clearAndDeallocate();
+			cleanup();
 			return;
 		}
 
 		T* newData = static_cast<T*>(::operator new(sizeof(T) * newCapacity));
 		size_t newCount = std::min(mCount, newCapacity);
 
-		try
+		if (mData)
 		{
-			if (mData && newCount > 0)
-			{
-				if (mFront < mRear)
-				{
-					std::uninitialized_move_n(mData + mFront, newCount, newData);
-				}
-				else
-				{
-					size_t frontPart = std::min(newCount, mCapacity - mFront);
-					std::uninitialized_move_n(mData + mFront, frontPart, newData);
-
-					size_t remaining = newCount - frontPart;
-					if (remaining > 0)
-					{
-						std::uninitialized_move_n(mData, remaining, newData + frontPart);
-					}
-				}
-			}
+			moveCircular(newData, newCount);
+			destroyCircular();
+			::operator delete(mData);
 		}
-		catch (...)
-		{
-			::operator delete(newData);
-			throw;
-		}
-
-		clearAndDeallocate();
 
 		mData = newData;
 		mFront = 0;
-		mRear = newCount % newCapacity;
 		mCount = newCount;
 		mCapacity = newCapacity;
+		mRear = (mCount == mCapacity) ? 0 : mCount;
 	}
 
-	void clearAndDeallocate() noexcept
+	void destroyCircular() noexcept
+	{
+		if (!mData)
+		{
+			return;
+		}
+
+		if (mCount > 0)
+		{
+			if (mFront < mRear)
+			{
+				std::destroy_n(mData + mFront, mCount);
+			}
+			else
+			{
+				std::destroy_n(mData + mFront, mCapacity - mFront);
+				std::destroy_n(mData, mRear);
+			}
+		}
+	}
+
+	void copyCircular(const Queue& from, T* to)
+	{
+		if (from.mCount == 0)
+		{
+			return;
+		}
+
+		if (from.mFront < from.mRear)
+		{
+			std::uninitialized_copy_n(from.mData + from.mFront, from.mCount, to);
+		}
+		else
+		{
+			size_t frontPartSize = from.mCapacity - from.mFront;
+			std::uninitialized_copy_n(from.mData + from.mFront, frontPartSize, to);
+			std::uninitialized_copy_n(from.mData, from.mRear, to + frontPartSize);
+		}
+	}
+
+	void moveCircular(T* to, size_t count)
+	{
+		if (count == 0)
+		{
+			return;
+		}
+
+		if (mFront < mRear)
+		{
+			std::uninitialized_move_n(mData + mFront, count, to);
+		}
+		else
+		{
+			size_t frontPartSize = std::min(count, mCapacity - mFront);
+			std::uninitialized_move_n(mData + mFront, frontPartSize, to);
+
+			size_t rearPartSize = count - frontPartSize;
+			if (rearPartSize > 0)
+			{
+				std::uninitialized_move_n(mData, rearPartSize, to + frontPartSize);
+			}
+		}
+	}
+
+	void cleanup() noexcept
 	{
 		if (mData)
 		{
-			Clear();
+			destroyCircular();
 			::operator delete(mData);
 			mData = nullptr;
+			mFront = 0;
+			mRear = 0;
+			mCount = 0;
 			mCapacity = 0;
 		}
 	}
