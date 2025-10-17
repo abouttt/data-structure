@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <compare>
 #include <initializer_list>
+#include <type_traits>
 #include <utility>
 
 namespace abouttt
@@ -11,9 +12,16 @@ namespace abouttt
 template <typename T>
 class LinkedListNode;
 
+template <typename T, bool IsConst>
+class LinkedListIterator;
+
 template <typename T>
 class LinkedList
 {
+public:
+	using Iterator = LinkedListIterator<T, false>;
+	using ConstIterator = LinkedListIterator<T, true>;
+
 public:
 	LinkedList() noexcept
 		: mHead(nullptr)
@@ -97,7 +105,9 @@ public:
 			b = b->mNext;
 		}
 
-		return mCount <=> other.mCount;
+		return !a && !b ? std::strong_ordering::equal :
+			!a ? std::strong_ordering::less :
+			std::strong_ordering::greater;
 	}
 
 	bool operator==(const LinkedList& other) const
@@ -192,6 +202,11 @@ public:
 
 	LinkedListNode<T>* Find(const T& value)
 	{
+		return const_cast<LinkedListNode<T>*>(static_cast<const LinkedList*>(this)->Find(value));
+	}
+
+	const LinkedListNode<T>* Find(const T& value) const
+	{
 		for (LinkedListNode<T>* node = mHead; node != nullptr; node = node->mNext)
 		{
 			if (node->mValue == value)
@@ -202,12 +217,12 @@ public:
 		return nullptr;
 	}
 
-	const LinkedListNode<T>* Find(const T& value) const
+	LinkedListNode<T>* FindLast(const T& value)
 	{
-		return const_cast<LinkedList<T>*>(this)->Find(value);
+		return const_cast<LinkedListNode<T>*>(static_cast<const LinkedList*>(this)->FindLast(value));
 	}
 
-	LinkedListNode<T>* FindLast(const T& value)
+	const LinkedListNode<T>* FindLast(const T& value) const
 	{
 		for (LinkedListNode<T>* node = mTail; node != nullptr; node = node->mPrev)
 		{
@@ -217,11 +232,6 @@ public:
 			}
 		}
 		return nullptr;
-	}
-
-	const LinkedListNode<T>* FindLast(const T& value) const
-	{
-		return const_cast<LinkedList<T>*>(this)->FindLast(value);
 	}
 
 	LinkedListNode<T>* Head() const noexcept
@@ -325,6 +335,11 @@ public:
 		{
 			delete node;
 		}
+		else
+		{
+			node->mPrev = nullptr;
+			node->mNext = nullptr;
+		}
 
 		--mCount;
 
@@ -343,6 +358,27 @@ public:
 		std::swap(mCount, other.mCount);
 	}
 
+public: // Iterators for range-based loop support.
+	Iterator begin() noexcept
+	{
+		return Iterator(mHead);
+	}
+
+	ConstIterator begin() const noexcept
+	{
+		return ConstIterator(mHead);
+	}
+
+	Iterator end() noexcept
+	{
+		return Iterator(nullptr);
+	}
+
+	ConstIterator end() const noexcept
+	{
+		return ConstIterator(nullptr);
+	}
+
 private:
 	LinkedListNode<T>* mHead;
 	LinkedListNode<T>* mTail;
@@ -354,7 +390,8 @@ class LinkedListNode
 {
 public:
 	friend class LinkedList<T>;
-	friend class LinkedListIterator<T>;
+	template <typename U, bool IsConst>
+	friend class LinkedListIterator;
 
 public:
 	template <typename... Args>
@@ -400,6 +437,57 @@ private:
 	T mValue;
 	LinkedListNode* mNext;
 	LinkedListNode* mPrev;
+};
+
+template <typename T, bool IsConst>
+class LinkedListIterator
+{
+public:
+	using NodeType = std::conditional_t<IsConst, const LinkedListNode<T>, LinkedListNode<T>>;
+	using ValueType = std::conditional_t<IsConst, const T, T>;
+
+public:
+	explicit LinkedListIterator(NodeType* node) noexcept
+		: mNode(node)
+	{
+	}
+
+public:
+	ValueType& operator*() const noexcept
+	{
+		return mNode->mValue;
+	}
+
+	ValueType* operator->() const noexcept
+	{
+		return &mNode->mValue;
+	}
+
+	LinkedListIterator& operator++() noexcept
+	{
+		mNode = mNode ? mNode->mNext : nullptr;
+		return *this;
+	}
+
+	LinkedListIterator operator++(int) noexcept
+	{
+		LinkedListIterator temp(*this);
+		++(*this);
+		return temp;
+	}
+
+	bool operator==(const LinkedListIterator& other) const noexcept
+	{
+		return mNode == other.mNode;
+	}
+
+	bool operator!=(const LinkedListIterator& other) const noexcept
+	{
+		return mNode != other.mNode;
+	}
+
+private:
+	NodeType* mNode;
 };
 
 } // namespace abouttt
