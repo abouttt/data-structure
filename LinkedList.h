@@ -15,7 +15,7 @@ template <typename T>
 class LinkedList
 {
 public:
-	LinkedList()
+	LinkedList() noexcept
 		: mHead(nullptr)
 		, mTail(nullptr)
 		, mCount(0)
@@ -134,9 +134,9 @@ public:
 		EmplaceHead(std::move(value));
 	}
 
-	bool AddHead(LinkedListNode<T>* node)
+	bool AddHead(LinkedListNode<T>* newNode)
 	{
-		return Insert(node, mHead);
+		return Insert(newNode, mHead);
 	}
 
 	void AddTail(const T& value)
@@ -149,21 +149,19 @@ public:
 		EmplaceTail(std::move(value));
 	}
 
-	bool AddTail(LinkedListNode<T>* node)
+	bool AddTail(LinkedListNode<T>* newNode)
 	{
-		return Insert(node, nullptr);
+		return Insert(newNode, nullptr);
 	}
 
 	void Clear() noexcept
 	{
-		LinkedListNode<T>* current = mHead;
-		while (current)
+		while (mHead)
 		{
-			LinkedListNode<T>* next = current->mNext;
-			delete current;
-			current = next;
+			auto next = mHead->mNext;
+			delete mHead;
+			mHead = next;
 		}
-		mHead = nullptr;
 		mTail = nullptr;
 		mCount = 0;
 	}
@@ -173,37 +171,26 @@ public:
 		return Find(value) != nullptr;
 	}
 
-	template <typename Predicate>
-	bool ContainsIf(Predicate pred) const
-	{
-		return FindIf(pred) != nullptr;
-	}
-
 	size_t Count() const noexcept
 	{
 		return mCount;
 	}
 
 	template <typename... Args>
-	LinkedListNode<T>* Emplace(LinkedListNode<T>* before, Args&&... args)
-	{
-		LinkedListNode<T>* newNode = new LinkedListNode<T>(std::forward<Args>(args)...);
-		return Insert(newNode, before) ? newNode : nullptr;
-	}
-
-	template <typename... Args>
 	LinkedListNode<T>* EmplaceHead(Args&&... args)
 	{
-		return Emplace(mHead, std::forward<Args>(args)...);
+		LinkedListNode<T>* newNode = new LinkedListNode<T>(std::forward<Args>(args)...);
+		return Insert(newNode, mHead) ? newNode : nullptr;
 	}
 
 	template <typename... Args>
 	LinkedListNode<T>* EmplaceTail(Args&&... args)
 	{
-		return Emplace(nullptr, std::forward<Args>(args)...);
+		LinkedListNode<T>* newNode = new LinkedListNode<T>(std::forward<Args>(args)...);
+		return Insert(newNode, nullptr) ? newNode : nullptr;
 	}
 
-	LinkedListNode<T>* Find(const T& value) const
+	LinkedListNode<T>* Find(const T& value)
 	{
 		for (LinkedListNode<T>* node = mHead; node != nullptr; node = node->mNext)
 		{
@@ -215,20 +202,12 @@ public:
 		return nullptr;
 	}
 
-	template <typename Predicate>
-	LinkedListNode<T>* FindIf(Predicate pred) const
+	const LinkedListNode<T>* Find(const T& value) const
 	{
-		for (LinkedListNode<T>* node = mHead; node != nullptr; node = node->mNext)
-		{
-			if (pred(node->mValue))
-			{
-				return node;
-			}
-		}
-		return nullptr;
+		return const_cast<LinkedList<T>*>(this)->Find(value);
 	}
 
-	LinkedListNode<T>* FindLast(const T& value) const
+	LinkedListNode<T>* FindLast(const T& value)
 	{
 		for (LinkedListNode<T>* node = mTail; node != nullptr; node = node->mPrev)
 		{
@@ -240,17 +219,9 @@ public:
 		return nullptr;
 	}
 
-	template <typename Predicate>
-	LinkedListNode<T>* FindLastIf(Predicate pred) const
+	const LinkedListNode<T>* FindLast(const T& value) const
 	{
-		for (LinkedListNode<T>* node = mTail; node != nullptr; node = node->mPrev)
-		{
-			if (pred(node->mValue))
-			{
-				return node;
-			}
-		}
-		return nullptr;
+		return const_cast<LinkedList<T>*>(this)->FindLast(value);
 	}
 
 	LinkedListNode<T>* Head() const noexcept
@@ -260,12 +231,14 @@ public:
 
 	void Insert(const T& value, LinkedListNode<T>* before)
 	{
-		Emplace(before, value);
+		LinkedListNode<T>* newNode = new LinkedListNode<T>(value);
+		Insert(newNode, before);
 	}
 
 	void Insert(T&& value, LinkedListNode<T>* before)
 	{
-		Emplace(before, std::move(value));
+		LinkedListNode<T>* newNode = new LinkedListNode<T>(std::move(value));
+		Insert(newNode, before);
 	}
 
 	bool Insert(LinkedListNode<T>* newNode, LinkedListNode<T>* before)
@@ -320,7 +293,7 @@ public:
 		return node ? Remove(node) : false;
 	}
 
-	bool Remove(LinkedListNode<T>* node)
+	bool Remove(LinkedListNode<T>* node, bool bDelete = true)
 	{
 		if (!node)
 		{
@@ -348,7 +321,11 @@ public:
 			mTail = prev;
 		}
 
-		delete node;
+		if (bDelete)
+		{
+			delete node;
+		}
+
 		--mCount;
 
 		return true;
@@ -377,10 +354,11 @@ class LinkedListNode
 {
 public:
 	friend class LinkedList<T>;
+	friend class LinkedListIterator<T>;
 
 public:
 	template <typename... Args>
-	LinkedListNode(Args&&... args)
+	explicit LinkedListNode(Args&&... args)
 		: mValue(std::forward<Args>(args)...)
 		, mNext(nullptr)
 		, mPrev(nullptr)
