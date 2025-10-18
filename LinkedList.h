@@ -12,15 +12,15 @@ namespace abouttt
 template <typename T>
 class LinkedListNode;
 
-template <typename T, bool IsConst>
+template <typename T>
 class LinkedListIterator;
 
 template <typename T>
 class LinkedList
 {
 public:
-	using Iterator = LinkedListIterator<T, false>;
-	using ConstIterator = LinkedListIterator<T, true>;
+	using Iterator = LinkedListIterator<T>;
+	using ConstIterator = LinkedListIterator<const T>;
 
 public:
 	LinkedList() noexcept
@@ -390,8 +390,7 @@ class LinkedListNode
 {
 public:
 	friend class LinkedList<T>;
-	template <typename U, bool IsConst>
-	friend class LinkedListIterator;
+	friend class LinkedListIterator<T>;
 
 public:
 	template <typename... Args>
@@ -439,26 +438,33 @@ private:
 	LinkedListNode* mPrev;
 };
 
-template <typename T, bool IsConst>
+template <typename T>
 class LinkedListIterator
 {
 public:
-	using NodeType = std::conditional_t<IsConst, const LinkedListNode<T>, LinkedListNode<T>>;
-	using ValueType = std::conditional_t<IsConst, const T, T>;
+	LinkedListIterator() noexcept
+		: mNode(nullptr)
+	{
+	}
 
-public:
-	explicit LinkedListIterator(NodeType* node) noexcept
+	explicit LinkedListIterator(LinkedListNode<T>* node) noexcept
 		: mNode(node)
 	{
 	}
 
+	template<typename U = T, typename = std::enable_if_t<std::is_const_v<U>>>
+	LinkedListIterator(const LinkedListIterator<std::remove_const_t<T>>& other) noexcept
+		: mNode(other.mNode)
+	{
+	}
+
 public:
-	ValueType& operator*() const noexcept
+	T& operator*() const noexcept
 	{
 		return mNode->mValue;
 	}
 
-	ValueType* operator->() const noexcept
+	T* operator->() const noexcept
 	{
 		return &mNode->mValue;
 	}
@@ -476,6 +482,19 @@ public:
 		return temp;
 	}
 
+	LinkedListIterator& operator--() noexcept
+	{
+		mNode = mNode ? mNode->mPrev : nullptr;
+		return *this;
+	}
+
+	LinkedListIterator operator--(int) noexcept
+	{
+		LinkedListIterator temp(*this);
+		--(*this);
+		return temp;
+	}
+
 	bool operator==(const LinkedListIterator& other) const noexcept
 	{
 		return mNode == other.mNode;
@@ -487,7 +506,7 @@ public:
 	}
 
 private:
-	NodeType* mNode;
+	LinkedListNode<T>* mNode;
 };
 
 } // namespace abouttt
