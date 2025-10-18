@@ -8,14 +8,24 @@
 #include <memory>
 #include <new>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 namespace abouttt
 {
 
 template <typename T>
+class ArrayIterator;
+
+template <typename T>
 class Array
 {
+public:
+	using Iterator = ArrayIterator<T>;
+	using ConstIterator = ArrayIterator<const T>;
+	using ReverseIterator = std::reverse_iterator<Iterator>;
+	using ConstReverseIterator = std::reverse_iterator<ConstIterator>;
+
 public:
 	static constexpr size_t INDEX_NONE = std::numeric_limits<size_t>::max();
 
@@ -365,14 +375,45 @@ public:
 	}
 
 public: // Iterators for range-based loop support.
-	T* begin() noexcept { return mData; }
-	const T* begin() const noexcept { return mData; }
-	T* end() noexcept { return mData + mCount; }
-	const T* end() const noexcept { return mData + mCount; }
-	std::reverse_iterator<T*> rbegin() noexcept { return std::reverse_iterator<T*>(end()); }
-	std::reverse_iterator<const T*> rbegin() const noexcept { return std::reverse_iterator<const T*>(end()); }
-	std::reverse_iterator<T*> rend() noexcept { return std::reverse_iterator<T*>(begin()); }
-	std::reverse_iterator<const T*> rend() const noexcept { return std::reverse_iterator<const T*>(begin()); }
+	Iterator begin() noexcept
+	{
+		return Iterator(mData);
+	}
+
+	ConstIterator begin() const noexcept
+	{
+		return ConstIterator(mData);
+	}
+
+	Iterator end() noexcept
+	{
+		return Iterator(mData + mCount);
+	}
+
+	ConstIterator end() const noexcept
+	{
+		return ConstIterator(mData + mCount);
+	}
+
+	ReverseIterator rbegin() noexcept
+	{
+		return ReverseIterator(end());
+	}
+
+	ConstReverseIterator rbegin() const noexcept
+	{
+		return ConstReverseIterator(end());
+	}
+
+	ReverseIterator rend() noexcept
+	{
+		return ReverseIterator(begin());
+	}
+
+	ConstReverseIterator rend() const noexcept
+	{
+		return ConstReverseIterator(begin());
+	}
 
 private:
 	void checkRange(size_t index, bool bAllowEnd = false) const
@@ -459,6 +500,97 @@ private:
 	T* mData;
 	size_t mCount;
 	size_t mCapacity;
+};
+
+template <typename T>
+class ArrayIterator
+{
+public:
+	ArrayIterator() noexcept
+		: mPtr(nullptr)
+	{
+	}
+
+	explicit ArrayIterator(T* ptr) noexcept
+		: mPtr(ptr)
+	{
+	}
+
+	template<typename U = T, typename = std::enable_if_t<std::is_const_v<U>>>
+	ArrayIterator(const ArrayIterator<std::remove_const_t<T>>& other) noexcept
+		: mPtr(other.mPtr)
+	{
+	}
+
+public:
+	T& operator*() const noexcept
+	{
+		return *mPtr;
+	}
+
+	T* operator->() const noexcept
+	{
+		return mPtr;
+	}
+
+	T& operator[](size_t index) const noexcept
+	{
+		return *(mPtr + index);
+	}
+
+	ArrayIterator& operator++() noexcept
+	{
+		++mPtr;
+		return *this;
+	}
+
+	ArrayIterator operator++(int) noexcept
+	{
+		ArrayIterator temp = *this;
+		++mPtr;
+		return temp;
+	}
+
+	ArrayIterator& operator--() noexcept
+	{
+		--mPtr;
+		return *this;
+	}
+
+	ArrayIterator operator--(int) noexcept
+	{
+		ArrayIterator temp = *this;
+		--mPtr;
+		return temp;
+	}
+
+	ArrayIterator operator+(size_t n) const noexcept
+	{
+		return ArrayIterator(mPtr + n);
+	}
+
+	ArrayIterator operator-(size_t n) const noexcept
+	{
+		return ArrayIterator(mPtr - n);
+	}
+
+	ptrdiff_t operator-(const ArrayIterator& other) const noexcept
+	{
+		return mPtr - other.mPtr;
+	}
+
+	bool operator==(const ArrayIterator& other) const noexcept
+	{
+		return mPtr == other.mPtr;
+	}
+
+	bool operator!=(const ArrayIterator& other) const noexcept
+	{
+		return mPtr != other.mPtr;
+	}
+
+private:
+	T* mPtr;
 };
 
 } // namespace abouttt
